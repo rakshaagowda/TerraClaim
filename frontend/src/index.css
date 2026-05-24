@@ -1,0 +1,51 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  background: #1a3a2a;
+  color: #1a1a1a;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group {
+  background: #1a3a2a !important;
+  border: 1px solid #2d5a3d !important;
+  border-radius: 6px !important;
+}
+
+.maplibregl-ctrl-group button {
+  background: #1a3a2a !important;
+  border-bottom: 1px solid #2d5a3d !important;
+}
+
+.maplibregl-ctrl-icon {
+  filter: invert(1) !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: #2d5a3d !important;
+}
+
+select option {
+  background: #1a3a2a;
+  color: #f5f0e8;
+}
+
+#root { height: 100vh; display: flex; }
+
+.maplibregl-popup-content {
+  background: #1a3a2a;
+  border: 1px solid #4a8c60;
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: #f5f0e8;
+  font-family: inherit;
+  font-size: 12px;
+  min-width: 200px;
+}
+
+.maplibregl-popup-tip { display: none; }
+.maplibregl-ctrl-group { background: #1a3a2a !important; border: 1px solid #2d5a3d !important; }
+.maplibregl-ctrl-group button { background: #1a3a2a !important; color: #f5f0e8 !important; }
+.maplibregl-ctrl-group button:hover { background: #2d5a3d !important; }
