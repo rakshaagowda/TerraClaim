@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# DB credentials (never commit these)
+*.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
