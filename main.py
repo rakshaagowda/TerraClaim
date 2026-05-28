@@ -240,3 +240,30 @@ def get_dss(
         "total": len(results),
         "records": results
     }
+
+# ── SEARCH ─────────────────────────────────────────────────
+@app.get("/api/fra/search")
+def search(q: str = Query(..., min_length=2)):
+    conn = get_conn()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT
+            patta_id, form_type, district, taluk, village,
+            claimant_name, tribal_community,
+            claim_area_acres, status,
+            ST_X(geom) AS lng, ST_Y(geom) AS lat
+        FROM fra_records
+        WHERE
+            geom IS NOT NULL AND (
+            patta_id        ILIKE %s OR
+            village         ILIKE %s OR
+            claimant_name   ILIKE %s OR
+            tribal_community ILIKE %s OR
+            district        ILIKE %s
+            )
+        LIMIT 10;
+    """, [f'%{q}%'] * 5)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return {"results": [clean_dict(dict(r)) for r in rows]}

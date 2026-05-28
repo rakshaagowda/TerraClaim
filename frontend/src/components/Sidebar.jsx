@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Filter, Map, BarChart2, Layers } from 'lucide-react'
+import SearchBar from './SearchBar.jsx'
 
 const STATUS_COLOR = {
   'Title Granted':       '#22c55e',
@@ -43,7 +44,7 @@ const s = {
   recMeta:    { fontSize:10, color:'#4a8c60' },
   badge:      { fontSize:9, fontWeight:600, padding:'2px 5px', borderRadius:3, textTransform:'uppercase', letterSpacing:0.4 },
 }
-export default function Sidebar({ stats, filters, setFilters, geojson, onSelectRecord, satellite, onToggleSatellite, onShowAnalytics, onShowDSS }) {
+export default function Sidebar({ stats, filters, setFilters, geojson, onSelectRecord, satellite, onToggleSatellite, onShowAnalytics, onShowDSS, onFlyTo }) {
   const total    = geojson?.count ?? 0
   const granted  = stats?.granted ?? 0
   const records  = geojson?.features ?? []
@@ -69,6 +70,7 @@ export default function Sidebar({ stats, filters, setFilters, geojson, onSelectR
       </div>
 
       <div style={s.scroll}>
+        <SearchBar onFlyTo={onFlyTo} />
         <div style={s.section}>
           <div style={s.secLabel}><Filter size={12}/> Filters</div>
           <select style={s.select} value={filters.district} onChange={e => setF('district', e.target.value)}>

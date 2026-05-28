@@ -31,7 +31,7 @@ export default function App() {
   const [filters,   setFilters]   = useState({ district:'', form_type:'', status:'', tribe:'' })
   const [satellite, setSatellite] = useState(false)
   const [mapReady,  setMapReady]  = useState(false)
-  const [view,      setView]      = useState('map') // 'map' | 'analytics' | 'dss'
+  const [view,      setView]      = useState('map')
 
   // ── FETCH STATS ───────────────────────────────────────────
   useEffect(() => {
@@ -72,7 +72,6 @@ export default function App() {
   // ── SWITCH BACK TO MAP ────────────────────────────────────
   useEffect(() => {
     if (view === 'map' && map.current) {
-      // Give the DOM time to show the map div again
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           map.current.resize()
@@ -88,6 +87,7 @@ export default function App() {
     }
   }, [view])
 
+  // ── RENDER LAYERS ─────────────────────────────────────────
   function renderLayers(data) {
     const m = map.current
     if (!m || !m.isStyleLoaded()) {
@@ -105,7 +105,7 @@ export default function App() {
       }))
     }
 
-    m.addSource('fra', { type:'geojson', data: colored })
+    m.addSource('fra', { type: 'geojson', data: colored })
     m.addLayer({
       id: 'fra-points',
       type: 'circle',
@@ -148,6 +148,7 @@ export default function App() {
     })
   }
 
+  // ── SATELLITE TOGGLE ──────────────────────────────────────
   function toggleSatellite() {
     const m = map.current
     const newSat = !satellite
@@ -157,6 +158,21 @@ export default function App() {
       : 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
     m.setStyle(style)
     m.once('styledata', () => { if (geojsonRef.current) renderLayers(geojsonRef.current) })
+  }
+
+  // ── FLY TO SEARCH RESULT ──────────────────────────────────
+  function flyTo(record) {
+    if (!map.current) return
+    setView('map')
+    setTimeout(() => {
+      map.current.flyTo({
+        center: [record.lng, record.lat],
+        zoom: 13,
+        speed: 1.4,
+        curve: 1.2,
+      })
+      axios.get(`${API}/api/fra/record/${record.patta_id}`).then(r => setSelected(r.data))
+    }, 100)
   }
 
   return (
@@ -171,9 +187,10 @@ export default function App() {
         onToggleSatellite={toggleSatellite}
         onShowAnalytics={() => setView('analytics')}
         onShowDSS={() => setView('dss')}
+        onFlyTo={flyTo}
       />
 
-      {/* MAP — always mounted, just hidden when not active */}
+      {/* MAP — always mounted, hidden when not active */}
       <div
         ref={mapContainer}
         style={{
