@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
+import { FileSpreadsheet, Filter, CheckCircle, Scale, Info } from 'lucide-react'
 
 const API = 'http://localhost:8000'
 
@@ -22,16 +23,16 @@ const STATUSES  = ['','Title Granted','DLC Approved','SDLC Approved','Under Veri
 
 function Chip({ val }) {
   const styles = {
-    Yes:   { background:'#dcfce7', color:'#166534', border:'1px solid #bbf7d0' },
+    Yes:   { background:'#e8f5e9', color:'#2e7d32', border:'1px solid #c8e6c9' },
     No:    { background:'#f1f5f9', color:'#94a3b8', border:'1px solid #e2e8f0' },
-    Check: { background:'#fef9c3', color:'#92400e', border:'1px solid #fde68a' },
+    Check: { background:'#fffdeb', color:'#d84315', border:'1px solid #ffe082' },
   }
-  const labels = { Yes:'✓', No:'—', Check:'~' }
+  const labels = { Yes:'✓ Yes', No:'—', Check:'Check' }
   return (
     <span style={{
       ...styles[val],
-      fontSize:10, fontWeight:700, padding:'2px 7px',
-      borderRadius:10, display:'inline-block'
+      fontSize:9, fontWeight:800, padding:'2px 6px',
+      borderRadius:6, display:'inline-block'
     }}>
       {labels[val] || val}
     </span>
@@ -99,51 +100,104 @@ export default function DSS({ onBack }) {
     count: records.filter(r => r[s] === 'Yes').length
   }))
 
-  const sel = { background:'white', border:'1px solid #e5e7eb', borderRadius:4, padding:'6px 10px', fontSize:12, color:'#333', fontFamily:'inherit', outline:'none' }
+  const sel = {
+    background: 'white',
+    border: '1px solid #c8dcd0',
+    borderRadius: 6,
+    padding: '6px 10px',
+    fontSize: 12,
+    color: '#2d4030',
+    fontFamily: 'inherit',
+    outline: 'none'
+  }
 
   return (
-    <div style={{ flex:1, overflowY:'auto', background:'#f5f0e8', padding:24 }}>
+    <div style={{
+      flex: 1,
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#f4f9f4',
+      padding: '20px 24px',
+      boxSizing: 'border-box',
+      overflow: 'hidden'
+    }}>
 
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <button onClick={onBack} style={{ background:'#1a3a2a', border:'none', color:'#e8c547', padding:'6px 14px', borderRadius:4, cursor:'pointer', fontSize:12, fontWeight:600 }}>
-          ← Map
-        </button>
-        <h2 style={{ fontSize:20, fontWeight:700, color:'#1a3a2a' }}>Decision Support System</h2>
-        <span style={{ fontSize:12, color:'#888' }}>CSS Scheme Eligibility Matrix</span>
-        <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-          <button
-            onClick={() => exportCSV(filtered)}
-            style={{ background:'#1a3a2a', border:'none', color:'#e8c547', padding:'6px 14px', borderRadius:4, cursor:'pointer', fontSize:12, fontWeight:600 }}
-          >
-            ⬇ Export CSV ({filtered.length})
-          </button>
+      {/* Header Banner & Explanation */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a301a', margin: 0 }}>Decision Support System (DSS)</h2>
+          <p style={{ fontSize: 11, color: '#4a7c59', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
+            Central Sector Scheme (CSS) Welfare Routing Matrix
+          </p>
+        </div>
+        <div style={{
+          background: '#e8f2e8',
+          border: '1px solid #cbdcce',
+          borderRadius: 6,
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          maxWidth: 520
+        }}>
+          <Info size={16} color="#2e7d32" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 10, color: '#2d4030', lineHeight: 1.3 }}>
+            <strong>How it works</strong>: Approved claimants are cross-linked with welfare schemes based on tribal status, land area, and form. Select a card below to filter for claimants eligible for that specific scheme.
+          </span>
         </div>
       </div>
 
       {/* Scheme summary cards */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:10, marginBottom:20 }}>
-        {summary.map(s => (
-          <div
-            key={s.key}
-            onClick={() => setSchemeFilter(schemeFilter === s.key ? '' : s.key)}
-            style={{
-              background: schemeFilter === s.key ? '#1a3a2a' : 'white',
-              border: `2px solid ${schemeFilter === s.key ? '#e8c547' : '#e5e7eb'}`,
-              borderRadius:10, padding:'12px 8px', textAlign:'center',
-              cursor:'pointer', transition:'all .2s'
-            }}
-          >
-            <div style={{ fontSize:22 }}>{s.icon}</div>
-            <div style={{ fontSize:18, fontWeight:700, fontFamily:'monospace', color: schemeFilter === s.key ? '#e8c547' : '#1a3a2a', lineHeight:1, margin:'4px 0' }}>{s.count}</div>
-            <div style={{ fontSize:9, color: schemeFilter === s.key ? '#4a8c60' : '#888', textTransform:'uppercase', letterSpacing:0.5 }}>{s.label}</div>
-          </div>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 10, marginBottom: 12 }}>
+        {summary.map(s => {
+          const isActive = schemeFilter === s.key;
+          return (
+            <div
+              key={s.key}
+              onClick={() => setSchemeFilter(isActive ? '' : s.key)}
+              style={{
+                background: isActive ? '#355e3b' : 'white',
+                border: `1.5px solid ${isActive ? '#2e7d32' : '#c8dcd0'}`,
+                color: isActive ? '#ffffff' : '#2d4030',
+                borderRadius: 8,
+                padding: '10px 8px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+              }}
+              onMouseEnter={e => {
+                if (!isActive) e.currentTarget.style.borderColor = '#2e7d32';
+              }}
+              onMouseLeave={e => {
+                if (!isActive) e.currentTarget.style.borderColor = '#c8dcd0';
+              }}
+            >
+              <div style={{ fontSize: 20 }}>{s.icon}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'monospace', color: isActive ? '#e8f5e9' : '#2e7d32', margin: '2px 0' }}>{s.count}</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: isActive ? '#c8e6c9' : '#556a59', textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.label}</div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Filters */}
-      <div style={{ background:'white', borderRadius:10, padding:'14px 16px', border:'1px solid #e5e7eb', marginBottom:16, display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-        <span style={{ fontSize:11, fontWeight:700, color:'#1a3a2a', textTransform:'uppercase', letterSpacing:0.5 }}>🔍 Filter</span>
+      {/* Filters Bar */}
+      <div style={{
+        background: 'white',
+        borderRadius: 8,
+        padding: '12px 16px',
+        border: '1px solid #c8dcd0',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+        marginBottom: 12,
+        display: 'flex',
+        gap: 10,
+        alignItems: 'center',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 800, color: '#2d5a27', textTransform: 'uppercase' }}>
+          <Filter size={12}/> Filter Matrix
+        </div>
         <select style={sel} value={district} onChange={e => setDistrict(e.target.value)}>
           {DISTRICTS.map(d => <option key={d} value={d}>{d || 'All Districts'}</option>)}
         </select>
@@ -151,33 +205,59 @@ export default function DSS({ onBack }) {
           {STATUSES.map(s => <option key={s} value={s}>{s || 'All Statuses'}</option>)}
         </select>
         <input
-          style={{ ...sel, flex:1, minWidth:200 }}
+          style={{ ...sel, flex: 1, minWidth: 160 }}
           placeholder="Search patta ID, village, claimant..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         {(district || status || search || schemeFilter) && (
           <button onClick={() => { setDistrict(''); setStatus(''); setSearch(''); setSchemeFilter('') }}
-            style={{ background:'#fee2e2', border:'1px solid #fecaca', color:'#991b1b', padding:'6px 12px', borderRadius:4, cursor:'pointer', fontSize:11, fontWeight:600 }}>
+            style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#991b1b', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
             ✕ Clear
           </button>
         )}
-        <span style={{ fontSize:11, color:'#888', marginLeft:'auto' }}>
-          {loading ? 'Loading...' : `${filtered.length} of ${records.length} records`}
-        </span>
+        
+        <button
+          onClick={() => exportCSV(filtered)}
+          style={{
+            background: '#355e3b',
+            border: 'none',
+            color: '#ffffff',
+            padding: '6px 12px',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontSize: 11,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+        >
+          <FileSpreadsheet size={13}/>
+          Export CSV ({filtered.length})
+        </button>
       </div>
 
-      {/* Table */}
-      <div style={{ background:'white', borderRadius:10, border:'1px solid #e5e7eb', overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+      {/* Grid Table Container (Fits page height) */}
+      <div style={{
+        background: 'white',
+        borderRadius: 8,
+        border: '1px solid #c8dcd0',
+        boxShadow: '0 4px 10px rgba(0,0,0,0.02)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1
+      }}>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr style={{ background:'#1a3a2a' }}>
+              <tr style={{ background: '#355e3b', color: '#ffffff', position: 'sticky', top: 0, zIndex: 10 }}>
                 {['Patta ID','Village','District','Form','Tribe','Acres','Status',
                   ...SCHEMES.map(s => SCHEME_ICONS[s]+' '+SCHEME_LABELS[s]),
-                  '# Eligible'
+                  '# Schemes'
                 ].map(h => (
-                  <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:10, fontWeight:700, letterSpacing:0.8, textTransform:'uppercase', color:'#f5f0e8', whiteSpace:'nowrap', borderRight:'1px solid #2d5a3d' }}>
+                  <th key={h} style={{ padding:'12px 10px', textAlign:'left', fontSize:9, fontWeight:800, letterSpacing:0.5, textTransform:'uppercase', borderRight:'1px solid #4a7c59', whiteSpace:'nowrap' }}>
                     {h}
                   </th>
                 ))}
@@ -185,34 +265,36 @@ export default function DSS({ onBack }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={15} style={{ padding:24, textAlign:'center', color:'#888' }}>Loading records...</td></tr>
+                <tr><td colSpan={15} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading records...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={15} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>No records found.</td></tr>
               ) : filtered.slice(0, 100).map((r, i) => (
-                <tr key={r.patta_id} style={{ background: i % 2 === 0 ? 'white' : '#f9fafb', borderBottom:'1px solid #f0f0f0' }}>
-                  <td style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:10, color:'#1a3a2a', whiteSpace:'nowrap' }}>{r.patta_id}</td>
-                  <td style={{ padding:'8px 12px', fontWeight:500 }}>{r.village}</td>
-                  <td style={{ padding:'8px 12px', color:'#555' }}>{r.district}</td>
-                  <td style={{ padding:'8px 12px' }}>
+                <tr key={r.patta_id} style={{ background: i % 2 === 0 ? 'white' : '#fcfdfc', borderBottom:'1px solid #edf5ed' }}>
+                  <td style={{ padding:'8px 10px', fontFamily:'monospace', fontSize:10, color:'#355e3b', fontWeight:700, whiteSpace:'nowrap' }}>{r.patta_id}</td>
+                  <td style={{ padding:'8px 10px', fontWeight:700 }}>{r.village}</td>
+                  <td style={{ padding:'8px 10px', color:'#4a5568' }}>{r.district}</td>
+                  <td style={{ padding:'8px 10px' }}>
                     <span style={{
-                      fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:3,
+                      fontSize:9, fontWeight:700, padding:'2px 5px', borderRadius:3,
                       background: r.form_type.includes('A') ? '#dbeafe' : r.form_type.includes('B') ? '#ede9fe' : '#dcfce7',
                       color:      r.form_type.includes('A') ? '#1e40af' : r.form_type.includes('B') ? '#5b21b6' : '#166534',
                     }}>
                       {r.form_type.includes('A') ? 'IFR' : r.form_type.includes('B') ? 'CR' : 'CFR'}
                     </span>
                   </td>
-                  <td style={{ padding:'8px 12px', color:'#555', fontSize:11 }}>{r.tribal_community}</td>
-                  <td style={{ padding:'8px 12px', fontFamily:'monospace' }}>{r.claim_area_acres}</td>
-                  <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                    <span style={{ fontSize:10, fontWeight:700, color: r.status === 'Title Granted' ? '#166534' : r.status === 'Rejected' ? '#991b1b' : '#92400e' }}>
-                      {r.status}
+                  <td style={{ padding:'8px 10px', color:'#4a5568', fontSize:11 }}>{r.tribal_community}</td>
+                  <td style={{ padding:'8px 10px', fontFamily:'monospace', fontWeight:700 }}>{parseFloat(r.claim_area_acres || 0).toFixed(2)}</td>
+                  <td style={{ padding:'8px 10px', whiteSpace:'nowrap' }}>
+                    <span style={{ fontSize:10, fontWeight:800, color: r.status === 'Title Granted' ? '#2e7d32' : r.status === 'Rejected' ? '#c62828' : '#ef6c00' }}>
+                      {r.status === 'Title Granted' ? 'Granted' : r.status.split(' ')[0]}
                     </span>
                   </td>
                   {SCHEMES.map(s => (
-                    <td key={s} style={{ padding:'8px 12px', textAlign:'center' }}>
+                    <td key={s} style={{ padding:'8px 10px', textAlign:'center', borderLeft: '1px solid #edf5ed' }}>
                       <Chip val={r[s]} />
                     </td>
                   ))}
-                  <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:700, fontFamily:'monospace', color:'#1a3a2a' }}>
+                  <td style={{ padding:'8px 10px', textAlign:'center', fontWeight:800, fontFamily:'monospace', color:'#2e7d32', borderLeft: '1px solid #edf5ed' }}>
                     {r.eligible_count}
                   </td>
                 </tr>
@@ -221,8 +303,8 @@ export default function DSS({ onBack }) {
           </table>
         </div>
         {filtered.length > 100 && (
-          <div style={{ padding:'12px 16px', background:'#f9fafb', borderTop:'1px solid #e5e7eb', fontSize:12, color:'#888', textAlign:'center' }}>
-            Showing first 100 of {filtered.length} records. Use filters or export CSV for full data.
+          <div style={{ padding:'8px 16px', background:'#edf5ed', borderTop:'1px solid #cbdcce', fontSize:11, color:'#4a7c59', textAlign:'center', fontWeight:700 }}>
+            Showing first 100 of {filtered.length} claims. Filter or export CSV to review full database records.
           </div>
         )}
       </div>

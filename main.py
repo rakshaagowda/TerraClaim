@@ -5,6 +5,7 @@ import psycopg2
 import psycopg2.extras
 from typing import Optional
 from decimal import Decimal
+from pydantic import BaseModel
 
 app = FastAPI(title="FRA Atlas API", version="1.0.0")
 
@@ -267,3 +268,60 @@ def search(q: str = Query(..., min_length=2)):
     cur.close()
     conn.close()
     return {"results": [clean_dict(dict(r)) for r in rows]}
+
+
+# ── REVIEW UPDATE (PERSIST STATUS) ─────────────────────────────────
+class ReviewRequest(BaseModel):
+    status: str
+    rejection_reason: Optional[str] = None
+    gram_sabha_date: Optional[str] = None
+    sdlc_date: Optional[str] = None
+    dlc_date: Optional[str] = None
+    title_date: Optional[str] = None
+
+@app.post("/api/fra/record/{patta_id}/review")
+def review_record(patta_id: str, req: ReviewRequest):
+    conn = get_conn()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    
+    # Check if record exists
+    cur.execute("SELECT * FROM fra_records WHERE patta_id = %s;", (patta_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return JSONResponse({"error": "Record not found"}, status_code=404)
+        
+    # Update record
+    cur.execute("""
+        UPDATE fra_records
+        SET
+            status = %s,
+            rejection_reason = %s,
+            gram_sabha_date = %s,
+            sdlc_date = %s,
+            dlc_date = %s,
+            title_date = %s,
+            updated_at = NOW()
+        WHERE patta_id = %s;
+    """, (
+        req.status,
+        req.rejection_reason,
+        req.gram_sabha_date or None,
+        req.sdlc_date or None,
+        req.dlc_date or None,
+        req.title_date or None,
+        patta_id
+    ))
+    conn.commit()
+    
+    # Retrieve updated record
+    cur.execute("""
+        SELECT *, ST_X(geom) AS lng, ST_Y(geom) AS lat
+        FROM fra_records WHERE patta_id = %s;
+    """, (patta_id,))
+    updated_row = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    return clean_dict(dict(updated_row))

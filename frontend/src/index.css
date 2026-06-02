@@ -2,50 +2,52 @@
 
 body {
   font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
-  background: #1a3a2a;
+  background: #f4f9f4;
   color: #1a1a1a;
   height: 100vh;
   overflow: hidden;
 }
 
 .maplibregl-ctrl-group {
-  background: #1a3a2a !important;
-  border: 1px solid #2d5a3d !important;
+  background: #ffffff !important;
+  border: 1px solid #cbdcce !important;
   border-radius: 6px !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
 }
 
 .maplibregl-ctrl-group button {
-  background: #1a3a2a !important;
-  border-bottom: 1px solid #2d5a3d !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #edf5ed !important;
+  color: #2d5a27 !important;
 }
 
 .maplibregl-ctrl-icon {
-  filter: invert(1) !important;
+  filter: none !important; /* Keep icons dark green/black for contrast */
 }
 
 .maplibregl-ctrl-group button:hover {
-  background: #2d5a3d !important;
+  background: #edf5ed !important;
 }
 
 select option {
-  background: #1a3a2a;
-  color: #f5f0e8;
+  background: #ffffff;
+  color: #2d4030;
 }
 
-#root { height: 100vh; display: flex; }
+#root { height: 100vh; display: block; }
 
 .maplibregl-popup-content {
-  background: #1a3a2a;
-  border: 1px solid #4a8c60;
+  background: #ffffff;
+  border: 1.5px solid #4a8c60;
   border-radius: 8px;
   padding: 12px 14px;
-  color: #f5f0e8;
+  color: #2d4030;
   font-family: inherit;
   font-size: 12px;
   min-width: 200px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
 }
 
 .maplibregl-popup-tip { display: none; }
-.maplibregl-ctrl-group { background: #1a3a2a !important; border: 1px solid #2d5a3d !important; }
-.maplibregl-ctrl-group button { background: #1a3a2a !important; color: #f5f0e8 !important; }
-.maplibregl-ctrl-group button:hover { background: #2d5a3d !important; }
+.maplibregl-ctrl-group button { color: #2d5a27 !important; }
+.maplibregl-ctrl-group button:hover { background: #edf5ed !important; }

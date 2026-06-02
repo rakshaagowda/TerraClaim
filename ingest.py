@@ -13,7 +13,7 @@ conn = psycopg2.connect(
 cur = conn.cursor()
 
 # ── LOAD XLSX ──────────────────────────────────────────────
-XLSX_PATH = r"C:\fra_atlas\FRA_Karnataka_Synthetic_Records.xlsx"
+XLSX_PATH = r"FRA_Karnataka_Synthetic_Records.xlsx"
 
 sheets = {
     "Form A (IFR)": "Form A — IFR (Individual)",
@@ -122,7 +122,7 @@ conn.commit()
 
 # ── VERIFY ─────────────────────────────────────────────────
 cur.execute("SELECT COUNT(*) FROM fra_records;")
-print(f"\n✓ Records in DB: {cur.fetchone()[0]}")
+print(f"\n[OK] Records in DB: {cur.fetchone()[0]}")
 
 cur.execute("""
     SELECT district, COUNT(*)
@@ -136,4 +136,4 @@ for row in cur.fetchall():
 
 cur.close()
 conn.close()
-print("\n✓ Done. Database loaded successfully.")
+print("\n[OK] Done. Database loaded successfully.")
