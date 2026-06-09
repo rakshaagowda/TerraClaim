@@ -91,9 +91,14 @@ export function validateClaim(record) {
     {
       id: 10,
       label: 'Forest boundary overlap conflict audit',
-      status: ha > 8 ? 'Warning' : 'Pass',
-      detail: ha > 8 ? 'Warning: High acreage intersects with critical wildlife corridor. Needs site inspection.' : 'No boundary conflict with core reserve forests.',
+      status: record.spatial_verify
+        ? (record.spatial_verify.boundary_valid ? 'Pass' : 'Warning')
+        : (ha > 8 ? 'Warning' : 'Pass'),
+      detail: record.spatial_verify
+        ? `${record.spatial_verify.conflict_type} detected. Overlap: ${record.spatial_verify.overlap_percentage}%. Status: ${record.spatial_verify.resolution_status}.`
+        : (ha > 8 ? 'Warning: High acreage intersects with critical wildlife corridor. Needs site inspection.' : 'No boundary conflict with core reserve forests.'),
     }
+
   ];
 
   const passedCount = checks.filter(c => c.status === 'Pass').length;
@@ -106,5 +111,75 @@ export function validateClaim(record) {
     passedCount,
     failedCount,
     isEligible: failedCount === 0,
+  };
+}
+
+/**
+ * Generates dynamic, district-specific boundary conflict profiles and reasoning.
+ * @param {Object} record - The claim record.
+ * @returns {Object} - Boundary conflict details.
+ */
+export function getConflictDetails(record) {
+  if (!record) return null;
+  const dist = record.district || '';
+  const overlap = record.spatial_verify?.overlap_percentage || 0;
+  
+  const DISTRICT_CONFLICTS = {
+    'Kodagu': {
+      division: 'Virajpet Territorial Division, Kodagu Forest Department',
+      sanctuary: 'Nagarahole National Park & Tiger Reserve Buffer',
+      impact: 'Critical seasonal elephant migration corridor block. High risk of human-elephant conflict corridor interference.',
+      reasoning: `Section 4(2) of the Forest Rights Act, 2006 dictates that rights can only be recognized if it does not cause irreversible damage to wildlife or habitats. Since the overlap with Nagarahole National Park Buffer is ${overlap}%, the committee must modify the boundary to exclude the sanctuary buffer core segment to maintain ecosystem conservation.`,
+      directive: overlap > 10 
+        ? 'REJECT the claim bounds OR order mandatory physical joint-survey modification to exclude the sanctuary boundary.'
+        : 'RESOLVE WITH CONDITION: Exclude the Tiger Reserve buffer segment and require joint survey validation.'
+    },
+    'Mysuru': {
+      division: 'Hunsur Territorial Division, Mysuru Forest Department',
+      sanctuary: 'Bandipur Tiger Reserve Buffer Zone',
+      impact: 'Overlap with eco-sensitive wildlife transit corridor. High risk of human-carnivore conflict and habitat fragmentation.',
+      reasoning: `Under Section 4(2) of the Forest Rights Act, 2006, forest rights in critical wildlife habitats may be modified or rescheduled if it is established that the land occupancy blocks critical wildlife migration corridors. The overlap with Bandipur National Park Buffer is ${overlap}%; hence, the committee must exclude this portion from the title.`,
+      directive: overlap > 10
+        ? 'MODIFY BOUNDARY: Enforce mandatory exclusion of the Bandipur buffer segment through joint field demarcation.'
+        : 'RESOLVE WITH CONDITION: Limit occupancy to outer boundary and exclude Bandipur sanctuary buffer.'
+    },
+    'Chikkamagaluru': {
+      division: 'Mudigere Range, Chikkamagaluru Forest Department',
+      sanctuary: 'Kudremukh Wildlife Sanctuary Buffer Zone',
+      impact: 'High-slope catchment area intersection. Blockage of crucial montane forest watershed.',
+      reasoning: `Section 4(2) of the Forest Rights Act, 2006 dictates that rights can only be recognized if they do not cause irreversible damage to wildlife or habitats. The overlap with Kudremukh Wildlife Sanctuary Buffer is ${overlap}%, which is a critical eco-sensitive watershed area. Boundaries must be altered to restrict occupancy to buffer outer zones.`,
+      directive: overlap > 10
+        ? 'REJECT the claim bounds OR order mandatory physical joint-survey modification to exclude the sanctuary boundary.'
+        : 'RESOLVE WITH CONDITION: Exclude the watershed sanctuary segment prior to title finalization.'
+    },
+    'Chamarajanagara': {
+      division: 'Kollegal Territorial Division, Chamarajanagara Forest Department',
+      sanctuary: 'Biligiriranganatha Temple (BRT) Tiger Reserve Core Zone',
+      impact: 'Encroachment in core tiger breeding habitat and nesting zones. Increased threat to endemic wildlife.',
+      reasoning: `Section 4(2) of the Forest Rights Act, 2006 protects critical wildlife habitats from occupancy. Since the overlap with BRT Tiger Reserve Core is ${overlap}%, no titles can be recognized within this boundary. The claim bounds must be pruned.`,
+      directive: 'REJECT bounds within Core Reserve. Mandate boundary truncation to exclude the BRT Core Zone.'
+    },
+    'Shivamogga': {
+      division: 'Sagar Territorial Division, Shivamogga Forest Department',
+      sanctuary: 'Sharavathi Valley Wildlife Sanctuary Buffer',
+      impact: 'Lion-tailed macaque habitat overlap. Heavy risk of evergreen canopy connectivity fragmentation.',
+      reasoning: `Under Section 4(2) of the FRA 2006, critical wildlife habitats require strict protection. Overlap of ${overlap}% with Sharavathi Valley Sanctuary requires reduction of bounds to preserve contiguous forest canopy.`,
+      directive: 'MODIFY CLAIMS: Trim bounds to exclude sanctuary portion to protect lion-tailed macaque habitats.'
+    },
+    'Hassan': {
+      division: 'Sakleshpur Range, Hassan Forest Department',
+      sanctuary: 'Pushpagiri Wildlife Sanctuary Extension Buffer',
+      impact: 'Evergreen forest canopy overlap. High biodiversity zone endangering endemic amphibian breeding basins.',
+      reasoning: `Under Section 4(2) of the FRA 2006, biodiversity conservation takes precedence in reserve buffers. The overlap of ${overlap}% must be pruned from the claim bounds to preserve Western Ghats biodiversity.`,
+      directive: 'RESOLVE WITH CONDITION: Exclude Pushpagiri Sanctuary buffer zones prior to final title registration.'
+    }
+  };
+
+  return DISTRICT_CONFLICTS[dist] || {
+    division: `${dist || 'Territorial'} Division Officer, Forest Department`,
+    sanctuary: `${dist || 'Local'} Wildlife Sanctuary Buffer Zone`,
+    impact: 'Overlap with critical conservation zone and wildlife buffer.',
+    reasoning: `Under Section 4(2) of the FRA 2006, rights must not cause irreversible damage to wildlife or habitats. The overlap of ${overlap}% must be excluded or resolved through a joint field survey.`,
+    directive: 'REJECT bounds or order joint field survey to demarcate non-forest buffer zones.'
   };
 }

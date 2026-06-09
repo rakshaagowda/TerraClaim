@@ -4,7 +4,7 @@ TerraClaim is a desktop-grade spatial ledger and decision support dashboard for 
 
 ---
 
-## 🏗️ System Architecture
+# 🏗️ System Architecture
 
 The following diagram illustrates the relationship between the dataset ingestion pipeline, database storage, Python FastAPI server, and the React + Vite frontend dashboard:
 
@@ -81,34 +81,14 @@ graph TD
    \c fra_atlas;
    CREATE EXTENSION IF NOT EXISTS postgis;
    ```
-3. Create the database table `fra_records`:
-   ```sql
-   CREATE TABLE IF NOT EXISTS fra_records (
-       patta_id VARCHAR(100) PRIMARY KEY,
-       form_type VARCHAR(100) NOT NULL,
-       district VARCHAR(100) NOT NULL,
-       taluk VARCHAR(100) NOT NULL,
-       village VARCHAR(100) NOT NULL,
-       claimant_name VARCHAR(255),
-       tribal_community VARCHAR(100),
-       claim_area_acres NUMERIC(10, 4),
-       claim_area_ha NUMERIC(10, 4),
-       status VARCHAR(100) NOT NULL,
-       gram_sabha_date DATE,
-       sdlc_date DATE,
-       dlc_date DATE,
-       title_date DATE,
-       rejection_reason TEXT,
-       geom GEOMETRY(Point, 4326),
-       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-   );
+3. Run the setup script:
+   ```bash
+   psql -U postgres -d fra_atlas -f setup_db.sql
    ```
 
 ### 3. Data Ingestion
 Run the python data ingestion script to read and populate the database from the synthetic records spreadsheet:
 ```bash
-# Verify your python virtual environment is active
 python ingest.py
 ```
 
@@ -121,22 +101,17 @@ python ingest.py
    ```bash
    uvicorn main:app --reload --port 8000
    ```
-   *The backend documentation will be accessible at http://localhost:8000/docs.*
 
 ### 5. Frontend Setup (React + Vite)
-1. Navigate to the frontend directory:
+1. Navigate to the frontend directory and install npm packages:
    ```bash
    cd frontend
-   ```
-2. Install npm packages:
-   ```bash
    npm install
    ```
-3. Start the Vite React development server:
+2. Start the Vite React development server:
    ```bash
    npm run dev
    ```
-   *The app should be live on http://localhost:5173.*
 
 ---
 
@@ -148,13 +123,9 @@ python ingest.py
 │   │   ├── components/           # Sub-modules (Analytics, DSS, Map, PattaCertificate, etc.)
 │   │   ├── App.jsx               # App entrypoint and layout framework
 │   │   └── index.css             # Main stylesheet
-│   ├── package.json              # Client dependencies & scripts
-│   └── vite.config.js            # Vite configuration
-│
 ├── main.py                       # FastAPI backend server API
 ├── ingest.py                     # Database ETL ingestion script
+├── setup_db.sql                  # Database initialization script
 ├── requirements.txt              # Python requirements
-├── .gitignore                    # Git file exclusions
-├── FRA_Karnataka_Synthetic_Records.xlsx # Raw spreadsheet data
 └── README.md                     # Project documentation
 ```

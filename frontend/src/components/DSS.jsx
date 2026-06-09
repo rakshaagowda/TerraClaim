@@ -57,7 +57,7 @@ function exportCSV(records) {
   URL.revokeObjectURL(url)
 }
 
-export default function DSS({ onBack }) {
+export default function DSS({ onBack, jurisdiction }) {
   const [records,  setRecords]  = useState([])
   const [filtered, setFiltered] = useState([])
   const [loading,  setLoading]  = useState(true)
@@ -68,14 +68,15 @@ export default function DSS({ onBack }) {
 
   useEffect(() => {
     const params = new URLSearchParams()
-    if (district) params.append('district', district)
+    const activeDistrict = jurisdiction || district
+    if (activeDistrict) params.append('district', activeDistrict)
     if (status)   params.append('status', status)
     setLoading(true)
     axios.get(`${API}/api/fra/dss?${params}`).then(r => {
       setRecords(r.data.records)
       setLoading(false)
     })
-  }, [district, status])
+  }, [district, status, jurisdiction])
 
   useEffect(() => {
     let out = [...records]
@@ -124,27 +125,56 @@ export default function DSS({ onBack }) {
     }}>
 
       {/* Header Banner & Explanation */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a301a', margin: 0 }}>Decision Support System (DSS)</h2>
-          <p style={{ fontSize: 11, color: '#4a7c59', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
-            Central Sector Scheme (CSS) Welfare Routing Matrix
-          </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 900, color: '#132a13', margin: 0 }}>Decision Support System (DSS)</h2>
+            <p style={{ fontSize: 11, color: '#4a7c59', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
+              Central Sector Scheme (CSS) Integration Matrix & Welfare Router
+            </p>
+          </div>
+          <div style={{
+            background: '#e8f2e8',
+            border: '1px solid #cbdcce',
+            borderRadius: 6,
+            padding: '8px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            maxWidth: 600
+          }}>
+            <Info size={16} color="#2e7d32" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: '#2d4030', lineHeight: 1.35 }}>
+              <strong>Statutory Linkage Guide</strong>: Under FRA Section 3(1), land title-deeds trigger auto-eligibility for rural welfare. Individual Forest Rights (IFR) qualify for landholder schemes, while Community Forest Rights (CFR) qualify for development infrastructure.
+            </span>
+          </div>
         </div>
+        
+        {/* Welfare Rules Legend */}
         <div style={{
-          background: '#e8f2e8',
-          border: '1px solid #cbdcce',
-          borderRadius: 6,
-          padding: '8px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          maxWidth: 520
+          background: 'white',
+          border: '1px solid #c8dcd0',
+          borderRadius: 8,
+          padding: '12px 14px',
+          fontSize: 10.5,
+          color: '#475569',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 12,
+          lineHeight: 1.4
         }}>
-          <Info size={16} color="#2e7d32" style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: 10, color: '#2d4030', lineHeight: 1.3 }}>
-            <strong>How it works</strong>: Approved claimants are cross-linked with welfare schemes based on tribal status, land area, and form. Select a card below to filter for claimants eligible for that specific scheme.
-          </span>
+          <div>
+            <strong style={{ color: '#2e7d32' }}>🌾 PM-KISAN</strong>: IFR title holders qualify for ₹6,000/year direct cash support as verified land-holding cultivators.
+          </div>
+          <div>
+            <strong style={{ color: '#0ea5e9' }}>🔨 MGNREGA</strong>: FRA title holders are legally entitled to **150 days** (vs 100) of rural manual labor employment.
+          </div>
+          <div>
+            <strong style={{ color: '#7c4dff' }}>🏠 PMAY-G</strong>: Super-priority routing for ₹1.3 Lakh housing assistance to replacement families holding granted titles.
+          </div>
+          <div>
+            <strong style={{ color: '#d97706' }}>💰 NSTFDC (PVTG)</strong>: Subsidized business and micro-loans (under 4% interest) for Soliga, Koraga, and Jenu Kuruba communities.
+          </div>
         </div>
       </div>
 
@@ -198,8 +228,17 @@ export default function DSS({ onBack }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 800, color: '#2d5a27', textTransform: 'uppercase' }}>
           <Filter size={12}/> Filter Matrix
         </div>
-        <select style={sel} value={district} onChange={e => setDistrict(e.target.value)}>
-          {DISTRICTS.map(d => <option key={d} value={d}>{d || 'All Districts'}</option>)}
+        <select 
+          disabled={!!jurisdiction}
+          style={sel} 
+          value={jurisdiction || district} 
+          onChange={e => setDistrict(e.target.value)}
+        >
+          {jurisdiction ? (
+            <option value={jurisdiction}>{jurisdiction} (Locked)</option>
+          ) : (
+            DISTRICTS.map(d => <option key={d} value={d}>{d || 'All Districts'}</option>)
+          )}
         </select>
         <select style={sel} value={status} onChange={e => setStatus(e.target.value)}>
           {STATUSES.map(s => <option key={s} value={s}>{s || 'All Statuses'}</option>)}

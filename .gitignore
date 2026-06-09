@@ -16,3 +16,10 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Media & Docs
+*.png
+*.pptx
+*.docx
+*.xlsx
+*.stackdump

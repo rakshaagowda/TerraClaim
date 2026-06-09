@@ -1,53 +1,95 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
+
+* { 
+  margin: 0; 
+  padding: 0; 
+  box-sizing: border-box; 
+  font-family: 'Outfit', sans-serif;
+}
 
 body {
-  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
   background: #f4f9f4;
   color: #1a1a1a;
   height: 100vh;
   overflow: hidden;
 }
 
+/* Glassmorphism utility classes */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+.glass-dark {
+  background: rgba(19, 42, 19, 0.8);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
 .maplibregl-ctrl-group {
-  background: #ffffff !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(8px) !important;
   border: 1px solid #cbdcce !important;
-  border-radius: 6px !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important;
+  overflow: hidden;
 }
 
 .maplibregl-ctrl-group button {
-  background: #ffffff !important;
+  background: transparent !important;
   border-bottom: 1px solid #edf5ed !important;
   color: #2d5a27 !important;
+  width: 36px !important;
+  height: 36px !important;
 }
 
-.maplibregl-ctrl-icon {
-  filter: none !important; /* Keep icons dark green/black for contrast */
+.maplibregl-ctrl-group button:last-child {
+  border-bottom: none !important;
 }
 
 .maplibregl-ctrl-group button:hover {
   background: #edf5ed !important;
 }
 
-select option {
-  background: #ffffff;
-  color: #2d4030;
-}
-
-#root { height: 100vh; display: block; }
-
 .maplibregl-popup-content {
-  background: #ffffff;
-  border: 1.5px solid #4a8c60;
-  border-radius: 8px;
-  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid #c8dcd0;
+  border-radius: 14px;
+  padding: 14px;
   color: #2d4030;
-  font-family: inherit;
-  font-size: 12px;
-  min-width: 200px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
 }
 
 .maplibregl-popup-tip { display: none; }
-.maplibregl-ctrl-group button { color: #2d5a27 !important; }
-.maplibregl-ctrl-group button:hover { background: #edf5ed !important; }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbdcce;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4a7c59;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}

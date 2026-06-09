@@ -43,10 +43,10 @@ const s = {
   badge:      { fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: 0.4 },
 }
 
-export default function Sidebar({ stats, filters, setFilters, geojson, onSelectRecord, satellite, onToggleSatellite, onShowAnalytics, onShowDSS, onFlyTo }) {
+export default function Sidebar({ stats, filters, setFilters, geojson, onSelectRecord, satellite, onToggleSatellite, onShowAnalytics, onShowDSS, onFlyTo, userMode, jurisdiction }) {
   const total    = geojson?.count ?? 0
-  const granted  = stats?.granted ?? 0
   const records  = geojson?.features ?? []
+  const granted  = records.filter(f => f.properties.status === 'Title Granted').length
 
   function setF(k, v) { setFilters(f => ({ ...f, [k]: v })) }
 
@@ -62,8 +62,11 @@ export default function Sidebar({ stats, filters, setFilters, geojson, onSelectR
             <div style={s.sub}>Visualizing 300 claims spatial bounds</div>
           </div>
         </div>
-        <div style={{ background: '#ffffff', border: '1px solid #cbdcce', borderRadius: 6, padding: '6px 10px', marginTop: 8, fontSize: 10, color: '#4a7c59', lineHeight: 1.4 }}>
-          💡 Click on any point to view its detailed profiles, legal audit, and satellite NDVI indices.
+        <div style={{ background: '#ffffff', border: '1px solid #cbdcce', borderRadius: 6, padding: '8px 10px', marginTop: 8, fontSize: 10, color: '#2d4030', lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 800, color: '#2d5a27', marginBottom: 2 }}>⚡ Official WebGIS Tooltips:</div>
+          • <strong>Point to Polygon</strong>: Zoom in (Zoom &gt; 10) to load exact computed land boundary polygons.<br/>
+          • <strong>Conflict Warning</strong>: Red dashed zones represent critical reserve forest overlaps.<br/>
+          • Click any plot to run the 10-point statutory legal checklist.
         </div>
       </div>
 
@@ -79,6 +82,76 @@ export default function Sidebar({ stats, filters, setFilters, geojson, onSelectR
         
         {/* Search */}
         <SearchBar onFlyTo={onFlyTo} />
+        
+        {/* Filters */}
+        <div style={s.section}>
+          <div style={s.secLabel}><Filter size={12}/> Filter Claims</div>
+          
+          {/* District Selector (Locked if official jurisdiction is set) */}
+          <select 
+            disabled={userMode === 'official' && !!jurisdiction} 
+            style={s.select} 
+            value={(userMode === 'official' && jurisdiction) ? jurisdiction : (filters?.district || '')} 
+            onChange={e => setF('district', e.target.value)}
+          >
+            {userMode === 'official' && jurisdiction ? (
+              <option value={jurisdiction}>{jurisdiction} (Locked)</option>
+            ) : (
+              <>
+                <option value="">All Districts</option>
+                {DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </>
+            )}
+          </select>
+
+          <div style={s.filterRow}>
+            <select style={s.select} value={filters?.form_type || ''} onChange={e => setF('form_type', e.target.value)}>
+              <option value="">All Forms</option>
+              {FORMS.map(f => (
+                <option key={f} value={f}>
+                  {f.includes('A') ? 'IFR' : f.includes('B') ? 'CR' : 'CFR'}
+                </option>
+              ))}
+            </select>
+
+            <select style={s.select} value={filters?.status || ''} onChange={e => setF('status', e.target.value)}>
+              <option value="">All Statuses</option>
+              {STATUSES.map(st => (
+                <option key={st} value={st}>
+                  {st.split(' ')[0]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <select style={s.select} value={filters?.tribe || ''} onChange={e => setF('tribe', e.target.value)}>
+            <option value="">All Tribes</option>
+            {TRIBES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+
+          {(filters?.district || filters?.form_type || filters?.status || filters?.tribe) && (
+            <button
+              onClick={() => {
+                const defaultDistrict = (userMode === 'official' && jurisdiction) ? jurisdiction : '';
+                setFilters({ district: defaultDistrict, form_type: '', status: '', tribe: '' });
+              }}
+              style={{
+                width: '100%',
+                background: '#fee2e2',
+                border: '1px solid #fecaca',
+                color: '#991b1b',
+                padding: '6px',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: 10,
+                fontWeight: 700,
+                marginTop: 2
+              }}
+            >
+              ✕ Reset Filters
+            </button>
+          )}
+        </div>
         
 
 
