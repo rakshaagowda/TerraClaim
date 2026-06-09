@@ -187,6 +187,30 @@ export default function PlotCard({ record, onClose, onPrintDeed, userMode, onRev
                 </div>
               )}
 
+              {record.digital_signature && (
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1.5px solid #bbf7d0',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4
+                }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 900, color: '#166534', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span>🔒</span> CRYPTOGRAPHIC E-SIGN CERTIFIED
+                  </div>
+                  <div style={{ fontSize: 9, color: '#475569', fontFamily: 'monospace', wordBreak: 'break-all', marginTop: 2 }}>
+                    <strong>Signature Hash:</strong><br/>
+                    {record.digital_signature}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 9, color: '#475569', marginTop: 2 }}>
+                    <div><strong>Signed By:</strong> {record.signed_by}</div>
+                    <div><strong>Signed On:</strong> {record.signature_date ? new Date(record.signature_date).toLocaleDateString() : 'N/A'}</div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ borderTop: '1px solid #edf5ed', paddingTop: 10, display: 'flex', gap: 6 }}>
                 {isGranted && (
                   <button

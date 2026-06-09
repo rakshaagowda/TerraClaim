@@ -31,6 +31,164 @@ def clean_dict(d):
     return {k: clean(v) for k, v in d.items()}
 
 
+# ── CRYPTOGRAPHIC & SECURITY UTILITIES ───────────────────────
+import hmac
+import hashlib
+import base64
+import json
+import time
+import re
+from datetime import datetime
+from fastapi import Depends, Header, HTTPException
+
+SECRET_KEY = b"karnataka-fra-atlas-secure-secret-key-2026"
+
+def hash_password(password: str, salt: str = "fra_salt_value") -> str:
+    # PBKDF2-HMAC-SHA256 with 100,000 iterations for secure password storage
+    return hashlib.pbkdf2_hmac(
+        'sha256', 
+        password.encode('utf-8'), 
+        salt.encode('utf-8'), 
+        100000
+    ).hex()
+
+def create_jwt_token(payload: dict) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+    header_b64 = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().replace("=", "")
+    
+    payload_copy = payload.copy()
+    payload_copy["exp"] = int(time.time()) + 86400  # Token expires in 24 hours
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload_copy).encode()).decode().replace("=", "")
+    
+    msg = f"{header_b64}.{payload_b64}".encode()
+    sig = hmac.new(SECRET_KEY, msg, hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).decode().replace("=", "")
+    
+    return f"{header_b64}.{payload_b64}.{sig_b64}"
+
+def verify_jwt_token(token: str) -> Optional[dict]:
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        header_b64, payload_b64, sig_b64 = parts[0], parts[1], parts[2]
+        
+        msg = f"{header_b64}.{payload_b64}".encode()
+        expected_sig = hmac.new(SECRET_KEY, msg, hashlib.sha256).digest()
+        expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode().replace("=", "")
+        
+        if not hmac.compare_digest(sig_b64.encode(), expected_sig_b64.encode()):
+            return None
+            
+        pad_len = 4 - (len(payload_b64) % 4)
+        if pad_len < 4:
+            payload_b64 += "=" * pad_len
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()).decode())
+        
+        if payload.get("exp", 0) < time.time():
+            return None
+            
+        return payload
+    except Exception:
+        return None
+
+def get_current_officer(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authentication token.")
+    token = authorization.split(" ")[1]
+    payload = verify_jwt_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Authentication session expired or invalid.")
+    return payload
+
+
+# ── PURE PYTHON GEOSPATIAL ENGINE ───────────────────────────
+def parse_wkt(wkt_str: str):
+    if not wkt_str:
+        return None
+    wkt_str = wkt_str.upper()
+    if "POINT" in wkt_str:
+        match = re.search(r"POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)", wkt_str)
+        if match:
+            return "point", (float(match.group(1)), float(match.group(2)))
+    elif "POLYGON" in wkt_str:
+        match = re.search(r"POLYGON\s*\(\s*\(\s*([^)]+)\s*\)\s*\)", wkt_str)
+        if match:
+            coords_str = match.group(1)
+            coords = []
+            for pt_str in coords_str.split(","):
+                pt_str = pt_str.strip()
+                parts = pt_str.split()
+                if len(parts) >= 2:
+                    coords.append((float(parts[0]), float(parts[1])))
+            return "polygon", coords
+    return None
+
+def point_in_polygon(point, polygon_coords):
+    x, y = point
+    n = len(polygon_coords)
+    inside = False
+    p1x, p1y = polygon_coords[0]
+    for i in range(n + 1):
+        p2x, p2y = polygon_coords[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xints = (y - p1y) * (p2x - p1x) / (y - p1y if p2y == p1y else p2y - p1y) + p1x
+                    if p1x == p2x or x <= xints:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
+    return inside
+
+def check_spatial_intersection(claim_wkt: str, forest_wkt: str):
+    claim_geom = parse_wkt(claim_wkt)
+    forest_geom = parse_wkt(forest_wkt)
+    if not claim_geom or not forest_geom:
+        return False, 0.0
+    
+    forest_type, forest_coords = forest_geom
+    if forest_type != "polygon":
+        return False, 0.0
+        
+    if claim_geom[0] == "point":
+        pt = claim_geom[1]
+        if point_in_polygon(pt, forest_coords):
+            return True, 100.0
+    else:
+        claim_type, claim_coords = claim_geom
+        
+        # Bounding box check
+        claim_xs = [p[0] for p in claim_coords]
+        claim_ys = [p[1] for p in claim_coords]
+        forest_xs = [p[0] for p in forest_coords]
+        forest_ys = [p[1] for p in forest_coords]
+        
+        min_cx, max_cx = min(claim_xs), max(claim_xs)
+        min_cy, max_cy = min(claim_ys), max(claim_ys)
+        min_fx, max_fx = min(forest_xs), max(forest_xs)
+        min_fy, max_fy = min(forest_ys), max(forest_ys)
+        
+        if max_cx < min_fx or min_cx > max_fx or max_cy < min_fy or min_cy > max_fy:
+            return False, 0.0
+            
+        contained_points = sum(1 for pt in claim_coords if point_in_polygon(pt, forest_coords))
+        if contained_points > 0:
+            overlap_pct = (contained_points / len(claim_coords)) * 100.0
+            return True, round(overlap_pct, 1)
+            
+        overlap_x = max(0.0, min(max_cx, max_fx) - max(min_cx, min_fx))
+        overlap_y = max(0.0, min(max_cy, max_fy) - max(min_cy, min_fy))
+        overlap_area = overlap_x * overlap_y
+        claim_area = (max_cx - min_cx) * (max_cy - min_cy)
+        if claim_area > 0 and overlap_area > 0:
+            overlap_pct = (overlap_area / claim_area) * 100.0
+            if overlap_pct > 1.0:
+                return True, round(overlap_pct, 1)
+                
+    return False, 0.0
+
+
 # ── HEALTH ─────────────────────────────────────────────────
 @app.get("/")
 def root():
@@ -73,7 +231,7 @@ def get_geojson(
             claim_area_acres, claim_area_ha, status,
             gram_sabha_date::text, sdlc_date::text,
             dlc_date::text, title_date::text, rejection_reason,
-            ST_X(geom) AS lng, ST_Y(geom) AS lat
+            geom
         FROM fra_records
         WHERE {where}
         ORDER BY district, village;
@@ -85,14 +243,27 @@ def get_geojson(
 
     features = []
     for r in rows:
+        r = dict(r)
+        geom_str = r.get("geom") or ""
+        parsed = parse_wkt(geom_str)
+        if parsed:
+            geom_type, coords = parsed
+            if geom_type == "point":
+                lng, lat = coords
+            else:
+                lng = sum(p[0] for p in coords) / len(coords)
+                lat = sum(p[1] for p in coords) / len(coords)
+        else:
+            lng, lat = 76.0, 12.0
+            
         features.append({
             "type": "Feature",
             "geometry": {
                 "type": "Point",
-                "coordinates": [float(r["lng"]), float(r["lat"])]
+                "coordinates": [float(lng), float(lat)]
             },
             "properties": {k: clean(v) for k, v in r.items()
-                           if k not in ("lng", "lat")}
+                           if k not in ("lng", "lat", "geom")}
         })
 
     return JSONResponse({
@@ -149,21 +320,40 @@ def get_stats():
 
 
 def get_spatial_verification(record):
-    acres = record.get('claim_area_acres') or 0
-    # Simulate conflicts if area is large (> 5 acres) or in specific districts
-    is_large = acres > 5
-    is_conflict_district = record.get('district') in ['Kodagu', 'Chikkamagaluru']
+    claim_geom = record.get('geom') or ''
     
-    has_conflict = is_large and is_conflict_district
-    overlap_val = 12.5 if has_conflict else (4.2 if is_large else 0.0)
-
+    # Query all protected forests from database
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT name, division, geom FROM protected_forests;")
+    forests = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    has_conflict = False
+    overlap_pct = 0.0
+    conflict_type = "None"
+    sanctuary_name = None
+    
+    for f in forests:
+        intersects, pct = check_spatial_intersection(claim_geom, f['geom'])
+        if intersects and pct > 0:
+            has_conflict = True
+            overlap_pct = pct
+            sanctuary_name = f['name']
+            conflict_type = "Critical Forest Corridor" if pct > 10 else "Minor Buffer"
+            break
+            
+    acres = record.get('claim_area_acres') or 0
+    
     return {
         "boundary_valid": not has_conflict,
-        "overlap_percentage": overlap_val,
-        "conflict_type": "Critical Forest Corridor" if has_conflict else ("Minor Buffer" if overlap_val > 0 else "None"),
+        "overlap_percentage": overlap_pct,
+        "conflict_type": conflict_type,
         "protected_zone_clear": not has_conflict,
         "satellite_cultivation_detected": True if acres > 0.3 else False,
-        "resolution_status": "Pending Inspection" if has_conflict else "Resolved"
+        "resolution_status": "Pending Inspection" if has_conflict else "Resolved",
+        "sanctuary_name": sanctuary_name
     }
 
 # ── SINGLE RECORD ───────────────────────────────────────────
@@ -172,7 +362,7 @@ def get_record(patta_id: str):
     conn = get_conn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT *, ST_X(geom) AS lng, ST_Y(geom) AS lat
+        SELECT *
         FROM fra_records WHERE patta_id = %s;
     """, (patta_id,))
     row = cur.fetchone()
@@ -182,6 +372,18 @@ def get_record(patta_id: str):
         return JSONResponse({"error": "Not found"}, status_code=404)
     
     record = clean_dict(dict(row))
+    geom_str = record.get("geom") or ""
+    parsed = parse_wkt(geom_str)
+    if parsed:
+        geom_type, coords = parsed
+        if geom_type == "point":
+            record["lng"], record["lat"] = coords
+        else:
+            record["lng"] = sum(p[0] for p in coords) / len(coords)
+            record["lat"] = sum(p[1] for p in coords) / len(coords)
+    else:
+        record["lng"], record["lat"] = 76.0, 12.0
+        
     record['spatial_verify'] = get_spatial_verification(record)
     return record
 
@@ -321,7 +523,7 @@ class ReviewRequest(BaseModel):
     title_document: Optional[str] = None
 
 @app.post("/api/fra/record/{patta_id}/review")
-def review_record(patta_id: str, req: ReviewRequest):
+def review_record(patta_id: str, req: ReviewRequest, officer: dict = Depends(get_current_officer)):
     conn = get_conn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     
@@ -332,6 +534,26 @@ def review_record(patta_id: str, req: ReviewRequest):
         cur.close()
         conn.close()
         return JSONResponse({"error": "Record not found"}, status_code=404)
+        
+    # Enforce district jurisdiction
+    if officer.get("jurisdiction").lower() != row["district"].lower():
+        cur.close()
+        conn.close()
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Access Denied: You do not have permission to review records in {row['district']} (Your jurisdiction: {officer['jurisdiction']})."
+        )
+        
+    digital_sig = row.get("digital_signature")
+    sig_date = row.get("signature_date")
+    signed_by = row.get("signed_by")
+    
+    if req.status == 'Title Granted' and not digital_sig:
+        # Generate cryptographic e-Sign SHA-256 hash
+        sig_data = f"{patta_id}:{row['claimant_name'] or ''}:{req.title_date or ''}:{officer['officer_id']}:karnataka-fra-salt-2026"
+        digital_sig = hashlib.sha256(sig_data.encode()).hexdigest()
+        sig_date = datetime.now()
+        signed_by = officer['officer_id']
         
     # Update record
     cur.execute("""
@@ -357,6 +579,10 @@ def review_record(patta_id: str, req: ReviewRequest):
             title_report = %s,
             title_document = %s,
             
+            digital_signature = %s,
+            signature_date = %s,
+            signed_by = %s,
+            
             updated_at = NOW()
         WHERE patta_id = %s;
     """, (
@@ -380,23 +606,40 @@ def review_record(patta_id: str, req: ReviewRequest):
         req.title_report or None,
         req.title_document or None,
         
+        digital_sig,
+        sig_date,
+        signed_by,
+        
         patta_id
     ))
     conn.commit()
     
     # Retrieve updated record
     cur.execute("""
-        SELECT *, ST_X(geom) AS lng, ST_Y(geom) AS lat
+        SELECT *
         FROM fra_records WHERE patta_id = %s;
     """, (patta_id,))
     updated_row = cur.fetchone()
     cur.close()
     conn.close()
     
-    return clean_dict(dict(updated_row))
+    record = clean_dict(dict(updated_row))
+    geom_str = record.get("geom") or ""
+    parsed = parse_wkt(geom_str)
+    if parsed:
+        geom_type, coords = parsed
+        if geom_type == "point":
+            record["lng"], record["lat"] = coords
+        else:
+            record["lng"] = sum(p[0] for p in coords) / len(coords)
+            record["lat"] = sum(p[1] for p in coords) / len(coords)
+    else:
+        record["lng"], record["lat"] = 76.0, 12.0
+        
+    record['spatial_verify'] = get_spatial_verification(record)
+    return record
 
 
-# ── OFFICER AUTHENTICATION ────────────────────────────────
 class OfficerLoginRequest(BaseModel):
     officer_id: str
     password: str
@@ -404,12 +647,15 @@ class OfficerLoginRequest(BaseModel):
     jurisdiction: str
     security_otp: str
 
+# ── OFFICER AUTHENTICATION ────────────────────────────────
 @app.post("/api/auth/officer/login")
 def officer_login(req: OfficerLoginRequest):
     from fastapi import HTTPException
     
-    # 1. Check core passcode
-    if req.password != "fra2006":
+    # 1. Check core passcode using PBKDF2 hashing comparison
+    expected_hash = hash_password("fra2006")
+    input_hash = hash_password(req.password)
+    if input_hash != expected_hash:
         raise HTTPException(status_code=401, detail="Invalid Security Passcode.")
         
     # 2. Check 6-digit OTP factor
@@ -417,7 +663,6 @@ def officer_login(req: OfficerLoginRequest):
         raise HTTPException(status_code=401, detail="Invalid Security OTP Code (2FA check failed).")
         
     # 3. Validate and parse the Standardized Officer ID
-    # Format: KA-[DIST_CODE]-[ROLE_CODE]-[SERIAL]-[YEAR]
     id_str = req.officer_id.strip().upper()
     parts = id_str.split("-")
     if len(parts) != 5 or parts[0] != "KA":
@@ -428,7 +673,6 @@ def officer_login(req: OfficerLoginRequest):
         
     dist_code, role_code, serial_num, year = parts[1], parts[2], parts[3], parts[4]
     
-    # Map district jurisdiction to code
     dist_map = {
         'MYS': 'Mysuru',
         'KOD': 'Kodagu',
@@ -438,14 +682,12 @@ def officer_login(req: OfficerLoginRequest):
         'HAS': 'Hassan'
     }
     
-    # Map role designation to code
     role_map = {
         'FRO': 'Forest Rights Officer (FRO)',
         'SDLC': 'Sub-Divisional Committee (SDLC) Officer',
         'DLC': 'District Level Committee (DLC) Officer'
     }
     
-    # Validate District
     expected_dist = dist_map.get(dist_code)
     if not expected_dist:
         raise HTTPException(status_code=400, detail=f"Unknown district prefix '{dist_code}' in Officer ID.")
@@ -455,7 +697,6 @@ def officer_login(req: OfficerLoginRequest):
             detail=f"Jurisdiction mismatch. Officer ID district '{expected_dist}' does not match selected dropdown jurisdiction '{req.jurisdiction}'."
         )
         
-    # Validate Designation / Role
     expected_role = role_map.get(role_code)
     if not expected_role:
         raise HTTPException(status_code=400, detail=f"Unknown designation code '{role_code}' in Officer ID.")
@@ -465,19 +706,22 @@ def officer_login(req: OfficerLoginRequest):
             detail=f"Role mismatch. Officer ID role '{expected_role}' does not match selected dropdown designation '{req.designation}'."
         )
         
-    # Validate Year
     if not year.isdigit() or len(year) != 4:
         raise HTTPException(status_code=400, detail="Invalid year component in Officer ID (must be a 4-digit year, e.g. 2026).")
         
-    # Validate Serial
     if not serial_num.isdigit():
         raise HTTPException(status_code=400, detail="Invalid serial number in Officer ID.")
-
-    # Generate mock JWT-like token
-    mock_token = f"mock-token-officer-{id_str}-{req.jurisdiction.lower()}"
+ 
+    # Generate secure, cryptographically signed JWT token
+    payload = {
+        "officer_id": id_str,
+        "designation": req.designation,
+        "jurisdiction": req.jurisdiction
+    }
+    token = create_jwt_token(payload)
     return {
         "status": "Authenticated",
-        "token": mock_token,
+        "token": token,
         "officer_id": id_str,
         "designation": req.designation,
         "jurisdiction": req.jurisdiction
@@ -553,8 +797,20 @@ def submit_claim(req: ClaimSubmitRequest):
     # Compute hectares
     ha = round(req.claim_area_acres * 0.404686, 4)
     
-    # Construct geometry point
-    geom = f"SRID=4326;POINT({req.lng} {req.lat})"
+    # Construct geometry polygon around centroid based on acreage
+    import math
+    side_m = (req.claim_area_acres * 4046.86) ** 0.5
+    lat_delta = (side_m / 2) / 111000
+    # Guard division by zero or extreme latitudes
+    cos_lat = math.cos(math.radians(req.lat))
+    lng_delta = (side_m / 2) / (111000 * cos_lat if cos_lat > 0.01 else 111000)
+    
+    p1_x, p1_y = req.lng - lng_delta, req.lat - lat_delta
+    p2_x, p2_y = req.lng + lng_delta, req.lat - lat_delta
+    p3_x, p3_y = req.lng + lng_delta, req.lat + lat_delta
+    p4_x, p4_y = req.lng - lng_delta, req.lat + lat_delta
+    
+    geom = f"SRID=4326;POLYGON(({p1_x} {p1_y}, {p2_x} {p2_y}, {p3_x} {p3_y}, {p4_x} {p4_y}, {p1_x} {p1_y}))"
     
     status = req.status or 'Claim Filed'
     
@@ -601,7 +857,7 @@ def download_fra_report(patta_id: str):
     conn = get_conn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT *, ST_X(geom) AS lng, ST_Y(geom) AS lat
+        SELECT *
         FROM fra_records WHERE patta_id = %s;
     """, (patta_id,))
     row = cur.fetchone()
@@ -613,6 +869,17 @@ def download_fra_report(patta_id: str):
         raise HTTPException(status_code=404, detail="Record not found")
         
     r = clean_dict(dict(row))
+    geom_str = r.get("geom") or ""
+    parsed = parse_wkt(geom_str)
+    if parsed:
+        geom_type, coords = parsed
+        if geom_type == "point":
+            r["lng"], r["lat"] = coords
+        else:
+            r["lng"] = sum(p[0] for p in coords) / len(coords)
+            r["lat"] = sum(p[1] for p in coords) / len(coords)
+    else:
+        r["lng"], r["lat"] = 76.0, 12.0
     
     # Format overlaps check
     is_large = (r.get('claim_area_acres') or 0) > 5
@@ -679,6 +946,12 @@ This document serves as an official consolidated spatial and administrative
 audit trail for Patta ID {r['patta_id']} under the Scheduled Tribes and Other 
 Traditional Forest Dwellers (Recognition of Forest Rights) Act, 2006. All 
 records are cryptographically registered and updated in the State WebGIS Registry.
+
+CRYPTOGRAPHIC E-SIGN VERIFICATION:
+Status             : {"🔒 CRYPTOGRAPHIC E-SIGN CERTIFIED" if r.get('digital_signature') else "PENDING"}
+Signature Hash     : {r.get('digital_signature') or 'NOT SIGNED'}
+Signed By          : {r.get('signed_by') or 'N/A'}
+Signature Date     : {r.get('signature_date') or 'N/A'}
 ======================================================================
 """
     headers = {

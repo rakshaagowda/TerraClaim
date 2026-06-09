@@ -124,6 +124,20 @@ const navSelectStyle = {
 
 const API = 'http://localhost:8000'
 
+// Configure global Axios request interceptor to automatically inject standard JWT tokens
+axios.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('officer_token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => {
+    return Promise.reject(error);
+  }
+);
+
 const STATUS_COLOR = {
   'Title Granted': '#2e7d32', // Deep pastel green
   'DLC Approved': '#7c4dff',
