@@ -9,45 +9,84 @@ TerraClaim is a desktop-grade spatial ledger and decision support dashboard for 
 The following diagram illustrates the relationship between the dataset ingestion pipeline, database storage, Python FastAPI server, and the React + Vite frontend dashboard:
 
 ```mermaid
-graph TD
-    %% Datasets & Ingestion
-    subgraph Data_Layer["Data Layer"]
-        XLSX[FRA_Karnataka_Synthetic_Records.xlsx] -->|Loads spreadsheet data| INGEST[ingest.py]
-        DB[(PostgreSQL + PostGIS)]
-        INGEST -->|Bulk inserts via psycopg2| DB
+graph TB
+    %% Nodes styling
+    classDef default fill:#fafafa,stroke:#555,stroke-width:1px,rx:6px,ry:6px;
+    classDef frontend fill:#E8F0FE,stroke:#4285F4,stroke-width:1.5px,rx:8px,ry:8px;
+    classDef backend fill:#FFF3E0,stroke:#F57C00,stroke-width:1.5px,rx:8px,ry:8px;
+    classDef data fill:#E8F5E9,stroke:#388E3C,stroke-width:1.5px,rx:8px,ry:8px;
+    classDef actor fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,rx:20px,ry:20px;
+    classDef ext fill:#ECEFF1,stroke:#607D8B,stroke-width:1px,rx:4px,ry:4px;
+
+    %% Elements
+    User([👤 Forest Rights Officer / Administrator])
+    
+    subgraph Frontend["💻 Frontend Layer (React + Vite)"]
+        direction TB
+        App[App.jsx <br/> State, Routing, Notifications]
+        MFA[LoginModal.jsx <br/> 2FA Passcode + OTP Check]
+        Table[RecordsTable.jsx <br/> Interactive Claims Ledger]
+        Workspace[ClaimWorkspace.jsx <br/> Review Workspace & Decision Dashboard]
+        Upload[DocUploadField.jsx <br/> Drag-and-Drop Archival Uploads]
+        MapPanel[WebGIS Map <br/> MapLibre / Leaflet Coordinates & Overlaps]
     end
 
-    %% Backend Service
-    subgraph Backend_Layer["Backend Layer (FastAPI)"]
-        API[FastAPI Server: main.py]
-        API <-->|SQL Queries & Spatial functions| DB
+    subgraph Backend["⚡ Backend Service (FastAPI Server)"]
+        direction TB
+        API[API Router <br/> main.py Endpoints]
+        Auth[Auth Engine <br/> PBKDF2 Password Hashing & JWT Signing]
+        Spatial[Spatial Validation Engine <br/> Ray-Casting Point-in-Polygon & WKT Parsing]
+        DocManager[Archival Document Manager <br/> Auto-Seeding & Storage Manager]
     end
 
-    %% Frontend App
-    subgraph Frontend_Layer["Frontend Layer (React + Vite)"]
-        UI[React Dashboard App]
-        AXIOS[Axios Client] <-->|HTTP REST Requests| API
-        
-        subgraph Components["Core Components"]
-            MAP[Maplibre GL Map]
-            TABLE[Records Table]
-            STATS[Analytics & Charts]
-            DSS[Decision Support System DSS]
-            CERT[Patta Certificate Generator]
-            REVIEW[Claim Review Modal]
-            GUIDE[Compliance & Info Guide]
+    subgraph DataStore["💾 Data & Storage Layer"]
+        direction LR
+        subgraph DB["PostgreSQL Database + PostGIS"]
+            R_Table[(fra_records <br/> Claim Polygons & Status)]
+            D_Table[(claim_documents <br/> Document Metadata)]
+            C_Table[(claim_comments <br/> Audit & Remarks)]
+            N_Table[(notifications <br/> Alerts Broadcast)]
         end
-        
-        UI --> Components
-        Components <--> AXIOS
+        DiskStore[("📁 Disk Storage <br/> uploads/{patta_id}/")]
     end
 
-    %% User Interaction
-    User([Forest Rights Officer / Admin]) <-->|Interacts with UI| UI
+    subgraph Ingestion["📥 Data Ingestion Pipeline"]
+        XLSX[FRA_Karnataka_Synthetic_Records.xlsx] -->|Loads Excel data| Ingest[ingest.py]
+    end
 
-    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
-    classDef highlight fill:#d4edda,stroke:#28a745,stroke-width:2px;
-    class INGEST,API,UI highlight;
+    %% Interactions
+    User <-->|Logs in & Audits Claims| App
+    App --> MFA
+    App --> Table
+    App --> Workspace
+    Workspace --> Upload
+    Workspace --> MapPanel
+
+    %% Frontend to Backend
+    MFA -->|Auth Request| Auth
+    Table -->|Search & Pagination| API
+    Workspace -->|Sync / Upload / Actions| API
+    Upload -->|Upload multipart file| API
+
+    %% Backend internal routing
+    API --> Auth
+    API --> Spatial
+    API --> DocManager
+
+    %% Backend to Data/Storage
+    Auth -.->|Creates JWT| App
+    Ingest -->|Bulk Insert| DB
+    Spatial <-->|Queries reserves & boundaries| R_Table
+    DocManager <-->|Insert & Select Metadata| D_Table
+    DocManager -->|Creates dummy / uploaded files| DiskStore
+    API <-->|Insert Comments & Read Logs| DB
+
+    %% Classes apply
+    class User actor;
+    class App,MFA,Table,Workspace,Upload,MapPanel frontend;
+    class API,Auth,Spatial,DocManager backend;
+    class R_Table,D_Table,C_Table,N_Table,DiskStore data;
+    class XLSX,Ingest ext;
 ```
 
 ---
@@ -57,6 +96,7 @@ graph TD
 - 🗺️ **Interactive Spatial Map**: Maplibre GL integration displaying geolocated Individual (IFR), Community (CR), and Community Forest Resource (CFR) claims, color-coded by claim status.
 - 📊 **Dynamic Analytics**: Summary dashboard featuring metrics such as total land claimed (in acres), ratio of granted vs. rejected files, and breakdowns by tribal community and district.
 - 🔍 **Elastic Search**: Instantly look up claims by Patta ID, claimant name, tribal community, village, or district.
+- 🗄️ **Archival Document Manager**: Automatically checks, seeds, and tracks verification documents from previous stages (Aadhaar, Land records, Survey sketches, Form applications) with a manual **Sync Previous Stage Docs** refresh.
 - 💡 **Decision Support System (DSS)**: Automatically computes eligibility for 7 central and state schemes (e.g., PM-KISAN, MGNREGA, JJM, PMAY-G, PMFBY, NSTFDC, DAJGUA) based on applicant's claim metadata.
 - 📝 **Workflow Review & Audit**: Inline review modal to update verification dates (Gram Sabha, SDLC, DLC) and final status (Title Granted/Rejected), persisting updates directly to the PostgreSQL database.
 - 📜 **Digital Patta Generator**: Automatically compiles official digital land title certificates with unique QR codes, state seals, and signatures for claimants with "Title Granted" status.

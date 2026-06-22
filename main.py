@@ -742,10 +742,107 @@ def upload_documents(
     conn.close()
     return {"status": "success", "uploaded_files": saved_docs}
 
+def seed_previous_stage_documents(patta_id: str, conn):
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    # Fetch current status and form_type of the claim
+    cur.execute("SELECT status, form_type FROM fra_records WHERE patta_id = %s;", (patta_id,))
+    record = cur.fetchone()
+    if not record:
+        cur.close()
+        return []
+    
+    status = record['status']
+    form_type = record['form_type']
+    
+    # Determine completed stages
+    stages_to_seed = []
+    stages_to_seed.append('applicant')
+    
+    if status in ['Gram Sabha Resolved', 'Under Verification', 'SDLC Approved', 'DLC Approved', 'Title Granted', 'Rejected']:
+        stages_to_seed.append('gram_sabha')
+        
+    if status in ['SDLC Approved', 'DLC Approved', 'Title Granted', 'Rejected']:
+        stages_to_seed.append('sdlc')
+        
+    if status in ['DLC Approved', 'Title Granted', 'Rejected']:
+        stages_to_seed.append('dlc')
+        
+    doc_seeding_map = {
+        'applicant': [
+            ('Form A (Individual Forest Rights)' if 'Form A' in form_type else ('Form B (Community Rights)' if 'Form B' in form_type else 'Form C (Community Forest Resource Rights)'), 'application_form_{}.pdf', 'application/pdf'),
+            ('Aadhaar / Identity documents', 'Aadhaar_Card_{}.pdf', 'application/pdf'),
+            ('Land records', 'Land_Revenue_Record_{}.pdf', 'application/pdf'),
+            ('Survey sketches', 'Survey_Sketch_{}.pdf', 'application/pdf')
+        ],
+        'gram_sabha': [
+            ('Supporting affidavits', 'Gram_Sabha_Resolution_{}.pdf', 'application/pdf')
+        ],
+        'sdlc': [
+            ('Satellite evidence', 'SDLC_Satellite_Inspection_{}.pdf', 'application/pdf'),
+            ('Supporting affidavits', 'SDLC_Verification_Report_{}.pdf', 'application/pdf')
+        ],
+        'dlc': [
+            ('Supporting affidavits', 'DLC_Recommendation_Report_{}.pdf', 'application/pdf')
+        ]
+    }
+    
+    seeded_docs = []
+    upload_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", patta_id)
+    os.makedirs(upload_base_dir, exist_ok=True)
+    
+    for stage in stages_to_seed:
+        docs = doc_seeding_map.get(stage, [])
+        for doc_type, file_template, mime_type in docs:
+            file_name = file_template.format(patta_id)
+            file_path = os.path.join(upload_base_dir, file_name)
+            
+            # Check if this document type is already uploaded for this patta_id
+            cur.execute("""
+                SELECT COUNT(*) FROM claim_documents 
+                WHERE patta_id = %s AND stage = %s AND document_type = %s;
+            """, (patta_id, stage, doc_type))
+            if cur.fetchone()['count'] > 0:
+                continue
+                
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(f"TerraClaim Document Management System\n")
+                    f.write(f"=====================================\n")
+                    f.write(f"Claim ID: {patta_id}\n")
+                    f.write(f"Document Type: {doc_type}\n")
+                    f.write(f"Stage: {stage.upper()}\n")
+                    f.write(f"Verified: True\n")
+                    f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"This is an archival verification document for the Forest Rights Act claim.\n")
+                
+                file_size = os.path.getsize(file_path)
+                
+                cur.execute("""
+                    INSERT INTO claim_documents (patta_id, stage, document_type, file_name, file_path, file_size, mime_type, uploaded_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id;
+                """, (patta_id, stage, doc_type, file_name, file_path, file_size, mime_type, 'System_Archival_Sync'))
+                doc_id = cur.fetchone()['id']
+                seeded_docs.append(doc_id)
+            except Exception as e:
+                print(f"Error seeding doc {file_name}: {e}")
+                
+    cur.close()
+    return seeded_docs
+
 @app.get("/api/fra/claim/{patta_id}/documents")
 def get_claim_documents(patta_id: str):
     conn = get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    
+    # Check if documents exist
+    cur.execute("SELECT COUNT(*) FROM claim_documents WHERE patta_id = %s;", (patta_id,))
+    count = cur.fetchone()['count']
+    
+    if count == 0:
+        seed_previous_stage_documents(patta_id, conn)
+        conn.commit()
+        
     cur.execute("""
         SELECT id, patta_id, stage, document_type, file_name, file_size, mime_type, uploaded_by, uploaded_at::text
         FROM claim_documents
@@ -756,6 +853,30 @@ def get_claim_documents(patta_id: str):
     cur.close()
     conn.close()
     return [dict(r) for r in rows]
+
+@app.post("/api/fra/claim/{patta_id}/fetch-previous-docs")
+def fetch_previous_docs(patta_id: str):
+    conn = get_conn()
+    try:
+        seed_previous_stage_documents(patta_id, conn)
+        conn.commit()
+        
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT id, patta_id, stage, document_type, file_name, file_size, mime_type, uploaded_by, uploaded_at::text
+            FROM claim_documents
+            WHERE patta_id = %s
+            ORDER BY uploaded_at DESC;
+        """, (patta_id,))
+        rows = cur.fetchall()
+        cur.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to sync previous stage documents: {str(e)}")
+    finally:
+        conn.close()
+
 
 @app.get("/api/fra/claim/document/{doc_id}/download")
 def download_document(doc_id: int, officer_id: Optional[str] = None, officer_name: Optional[str] = None):

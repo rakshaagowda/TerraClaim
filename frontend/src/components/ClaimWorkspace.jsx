@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   FileText, Map, ShieldAlert, Award, FileCode, CheckCircle, AlertTriangle, 
-  HelpCircle, MessageSquare, PlusCircle, ArrowUpRight, Ban, Send, ThumbsUp, Download 
+  HelpCircle, MessageSquare, PlusCircle, ArrowUpRight, Ban, Send, ThumbsUp, Download,
+  RefreshCw
 } from 'lucide-react';
 import DocUploadField from './DocUploadField.jsx';
 
@@ -13,6 +14,7 @@ export default function ClaimWorkspace({ record, officer, darkMode, onClose, onS
   const [comments, setComments] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [auditTrail, setAuditTrail] = useState([]);
+  const [syncingDocs, setSyncingDocs] = useState(false);
   
   // Actions states
   const [actionType, setActionType] = useState('comment'); // 'comment', 'approve', 'reject', 'clarification', 'escalate'
@@ -61,6 +63,20 @@ export default function ClaimWorkspace({ record, officer, darkMode, onClose, onS
     axios.get(`${API}/api/fra/claim/${record.patta_id}/audit-trail`)
       .then(res => setAuditTrail(res.data))
       .catch(err => console.error(err));
+  };
+
+  const handleSyncPreviousDocs = () => {
+    setSyncingDocs(true);
+    axios.post(`${API}/api/fra/claim/${record.patta_id}/fetch-previous-docs`)
+      .then(res => {
+        setDocuments(res.data);
+        setSyncingDocs(false);
+        fetchAuditTrail();
+      })
+      .catch(err => {
+        console.error(err);
+        setSyncingDocs(false);
+      });
   };
 
   const handleActionSubmit = (e) => {
@@ -355,9 +371,33 @@ export default function ClaimWorkspace({ record, officer, darkMode, onClose, onS
                 
                 {/* List of uploaded files */}
                 <div style={{ background: darkMode ? '#1e293b' : 'white', border: darkMode ? '1px solid #334155' : '1px solid #cbdcce', borderRadius: 12, padding: 16 }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: 13, fontWeight: 800, color: darkMode ? '#ffffff' : '#132a13' }}>
-                    Uploaded Document Ledger
-                  </h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 12px 0' }}>
+                    <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: darkMode ? '#ffffff' : '#132a13' }}>
+                      Uploaded Document Ledger
+                    </h4>
+                    <button
+                      onClick={handleSyncPreviousDocs}
+                      disabled={syncingDocs}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        background: '#355e3b',
+                        color: 'white',
+                        border: 'none',
+                        padding: '6px 12px',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        opacity: syncingDocs ? 0.6 : 1,
+                        transition: 'opacity 0.2s'
+                      }}
+                    >
+                      <RefreshCw size={11} style={{ animation: syncingDocs ? 'spin 1s linear infinite' : 'none' }} />
+                      {syncingDocs ? 'Syncing...' : 'Sync Previous Stage Docs'}
+                    </button>
+                  </div>
                   
                   {documents.length === 0 ? (
                     <div style={{ fontSize: 11.5, color: darkMode ? '#cbd5e1' : '#64748b', textAlign: 'center', padding: '20px 0' }}>
