@@ -3,11 +3,14 @@ import axios from 'axios';
 import { UserCheck, ShieldAlert, Lock, HelpCircle, X } from 'lucide-react';
 
 const API = 'http://localhost:8000';
-const DISTRICTS = ['Mysuru', 'Chamarajanagara', 'Shivamogga', 'Chikkamagaluru', 'Kodagu', 'Hassan'];
+const DISTRICTS = ['Mysuru', 'Chamarajanagara', 'Shivamogga', 'Chikkamagaluru', 'Kodagu', 'Hassan', 'Karnataka'];
 const DESIGNATIONS = [
+  'Gram Sabha Officer',
   'Forest Rights Officer (FRO)',
   'Sub-Divisional Committee (SDLC) Officer',
-  'District Level Committee (DLC) Officer'
+  'District Level Committee (DLC) Officer',
+  'State Review Authority',
+  'System Administrator'
 ];
 
 export default function LoginModal({ onClose, onLoginSuccess }) {
@@ -210,6 +213,18 @@ export default function LoginModal({ onClose, onLoginSuccess }) {
                     role: 'District Level Committee (DLC) Officer',
                     dist: 'Kodagu',
                     label: 'DLC (Kodagu District)'
+                  },
+                  {
+                    id: 'KA-KAR-STATE-01-2026',
+                    role: 'State Review Authority',
+                    dist: 'Karnataka',
+                    label: 'State Authority (Karnataka)'
+                  },
+                  {
+                    id: 'KA-KAR-ADMIN-01-2026',
+                    role: 'System Administrator',
+                    dist: 'Karnataka',
+                    label: 'System Admin (Karnataka)'
                   }
                 ].map(cred => (
                   <div key={cred.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '6px 8px', borderRadius: 4, border: '1px solid #dbeafe' }}>

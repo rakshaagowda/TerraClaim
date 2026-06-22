@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import axios from 'axios'
-import { Map, Database, BarChart3, Scale, Leaf, UserCheck, Eye, BookOpen, Filter, Search, Award, FileText, CheckCircle2, ShieldAlert } from 'lucide-react'
+import { Map, Database, BarChart3, Scale, Leaf, UserCheck, Eye, BookOpen, Filter, Search, Award, FileText, CheckCircle2, ShieldAlert, Sun, Moon, Bell, BellRing, Inbox } from 'lucide-react'
 import Sidebar from './components/Sidebar.jsx'
 import PlotCard from './components/PlotCard.jsx'
-import ClaimReviewModal from './components/ClaimReviewModal.jsx'
+import ClaimWorkspace from './components/ClaimWorkspace.jsx'
 import PattaCertificate from './components/PattaCertificate.jsx'
 import RecordsTable from './components/RecordsTable.jsx'
 import Analytics from './components/Analytics.jsx'
@@ -13,6 +13,8 @@ import DSS from './components/DSS.jsx'
 import Guide from './components/Guide.jsx'
 import ClaimStepper from './components/ClaimStepper.jsx'
 import LoginModal from './components/LoginModal.jsx'
+import TribesInfo from './components/TribesInfo.jsx'
+import DashboardManager from './components/DashboardManager.jsx'
 
 // Helper to convert point coordinates into simulated boundary polygons & overlaps
 function convertPointsToPolygons(pointsGeoJSON) {
@@ -162,7 +164,22 @@ export default function App() {
   const [mapReady, setMapReady] = useState(false)
 
   // Navigation Routing states
-  const [view, setView] = useState('track') // 'track', 'map', 'database', 'analytics', 'dss', 'tribes'
+  const [view, setView] = useState('track') // 'track', 'map', 'database', 'analytics', 'dss', 'tribes', 'dashboard'
+
+  // Theme states
+  const [darkMode, setDarkMode] = useState(false)
+
+  // Notifications states
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [notificationFilter, setNotificationFilter] = useState('All')
+
+  // Authentication States
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showLoginModal, setShowLoginModal] = useState(false)
+  const [loggedInOfficer, setLoggedInOfficer] = useState(null)
+
   const [userMode, setUserMode] = useState('public') // 'public', 'official'
   const [showDeed, setShowDeed] = useState(null)
   const [showReview, setShowReview] = useState(null)
@@ -191,6 +208,49 @@ export default function App() {
   const [submitLoading, setSubmitLoading] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(null)
   const [submitError, setSubmitError] = useState('')
+
+  const fetchNotifications = () => {
+    if (userMode !== 'official' || !loggedInOfficer) return
+    const params = new URLSearchParams()
+    params.append('role', loggedInOfficer.designation)
+    params.append('jurisdiction', loggedInOfficer.jurisdiction)
+    params.append('officer_id', loggedInOfficer.officer_id)
+    
+    axios.get(`${API}/api/fra/notifications?${params}`)
+      .then(res => {
+        setNotifications(res.data)
+        setUnreadCount(res.data.filter(n => !n.is_read).length)
+      })
+      .catch(err => console.error(err))
+  }
+
+  const handleMarkRead = (id) => {
+    axios.post(`${API}/api/fra/notifications/${id}/read`)
+      .then(() => fetchNotifications())
+      .catch(err => console.error(err))
+  }
+
+  const handleMarkAllRead = () => {
+    if (!loggedInOfficer) return;
+    const params = new URLSearchParams()
+    params.append('role', loggedInOfficer.designation)
+    params.append('jurisdiction', loggedInOfficer.jurisdiction)
+    params.append('officer_id', loggedInOfficer.officer_id)
+    
+    axios.post(`${API}/api/fra/notifications/mark-all-read?${params}`)
+      .then(() => fetchNotifications())
+      .catch(err => console.error(err))
+  }
+
+  useEffect(() => {
+    fetchNotifications()
+    let interval
+    if (userMode === 'official' && loggedInOfficer) {
+      interval = setInterval(fetchNotifications, 10000)
+    }
+    return () => clearInterval(interval)
+  }, [userMode, loggedInOfficer])
+
 
   const handleClaimSubmit = (e) => {
     e.preventDefault();
@@ -233,10 +293,7 @@ export default function App() {
       });
   };
 
-  // Authentication States
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [showLoginModal, setShowLoginModal] = useState(false)
-  const [loggedInOfficer, setLoggedInOfficer] = useState(null)
+
 
   // Load persisted session
   useEffect(() => {
@@ -247,6 +304,7 @@ export default function App() {
       setIsAuthenticated(true)
       setLoggedInOfficer(details)
       setUserMode('official')
+      setView('dashboard')
     }
   }, [])
 
@@ -282,6 +340,7 @@ export default function App() {
     setIsAuthenticated(true)
     setLoggedInOfficer(data)
     setUserMode('official')
+    setView('dashboard')
     setShowLoginModal(false)
   }
 
@@ -305,7 +364,7 @@ export default function App() {
       setTrackError('')
       setFilters({ district: '', form_type: '', status: '', tribe: '' })
     } else {
-      setView('map')
+      setView('dashboard')
       if (loggedInOfficer?.jurisdiction) {
         setFilters(f => ({ ...f, district: loggedInOfficer.jurisdiction }))
       }
@@ -652,7 +711,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', background: '#f4f9f4', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', background: darkMode ? '#0f172a' : '#f4f9f4', fontFamily: 'system-ui, -apple-system, sans-serif', color: darkMode ? '#f8fafc' : '#1a1a1a' }}>
 
       {/* ── TOP HORIZONTAL NAVIGATION BAR ── */}
       <div
@@ -664,8 +723,9 @@ export default function App() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(203, 220, 206, 0.5)',
-          color: '#2d4030',
+          borderBottom: darkMode ? '1px solid #334155' : '1px solid rgba(203, 220, 206, 0.5)',
+          background: darkMode ? '#1e293b' : 'rgba(255, 255, 255, 0.7)',
+          color: darkMode ? '#f8fafc' : '#2d4030',
           zIndex: 999
         }}
       >
@@ -674,8 +734,8 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 26, display: 'flex', alignItems: 'center' }}>🌱</div>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: 0.5, color: '#132a13' }}>TerraClaim</div>
-            <div style={{ fontSize: 9.5, color: '#4a7c59', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>Forest Land Spatial Ledger</div>
+            <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: 0.5, color: darkMode ? '#ffffff' : '#132a13' }}>TerraClaim</div>
+            <div style={{ fontSize: 9.5, color: darkMode ? '#a1bfa3' : '#4a7c59', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>Forest Land Spatial Ledger</div>
           </div>
         </div>
 
@@ -683,6 +743,7 @@ export default function App() {
         <div style={{ display: 'flex', height: '100%', alignItems: 'center' }}>
           {userMode === 'official' ? (
             [
+              { id: 'dashboard', label: 'Dashboard', icon: <Inbox size={15} /> },
               { id: 'map', label: 'WebGIS Map', icon: <Map size={15} /> },
               { id: 'database', label: 'Search Plots', icon: <Search size={15} /> },
               { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={15} /> },
@@ -697,7 +758,7 @@ export default function App() {
                   background: 'none',
                   border: 'none',
                   height: '100%',
-                  color: view === tab.id ? '#2e7d32' : '#556a59',
+                  color: view === tab.id ? (darkMode ? '#34d399' : '#2e7d32') : (darkMode ? '#94a3b8' : '#556a59'),
                   padding: '0 16px',
                   fontSize: 13.5,
                   fontWeight: 700,
@@ -706,7 +767,7 @@ export default function App() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  borderBottom: view === tab.id ? '4px solid #2e7d32' : '4px solid transparent',
+                  borderBottom: view === tab.id ? `4px solid ${darkMode ? '#34d399' : '#2e7d32'}` : '4px solid transparent',
                   opacity: view === tab.id ? 1 : 0.85
                 }}
               >
@@ -720,14 +781,14 @@ export default function App() {
                 background: 'none',
                 border: 'none',
                 height: '100%',
-                color: '#2e7d32',
+                color: darkMode ? '#34d399' : '#2e7d32',
                 padding: '0 16px',
                 fontSize: 13.5,
                 fontWeight: 700,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                borderBottom: '4px solid #2e7d32',
+                borderBottom: `4px solid ${darkMode ? '#34d399' : '#2e7d32'}`,
               }}
             >
               <Eye size={15} />
@@ -736,20 +797,203 @@ export default function App() {
           )}
         </div>
 
-        {/* User Role Switcher */}
+        {/* User Role Switcher & Notifications & Theme */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          
+          {/* Notifications panel bell icon */}
+          {userMode === 'official' && loggedInOfficer && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: darkMode ? '#e2e8f0' : '#2d4030',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  padding: 6,
+                  borderRadius: '50%',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                {unreadCount > 0 ? <BellRing size={18} color="#e8c547" /> : <Bell size={18} />}
+                {unreadCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    background: '#ef4444',
+                    color: 'white',
+                    borderRadius: '50%',
+                    width: 14,
+                    height: 14,
+                    fontSize: 8.5,
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 36,
+                  width: 320,
+                  maxHeight: 400,
+                  background: darkMode ? '#1e293b' : 'white',
+                  border: darkMode ? '1px solid #334155' : '1px solid #cbdcce',
+                  borderRadius: 12,
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  zIndex: 10000,
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    borderBottom: darkMode ? '1px solid #334155' : '1px solid #edf5ed',
+                    background: darkMode ? '#0f172a' : '#f8fafc'
+                  }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 900, color: darkMode ? 'white' : '#132a13' }}>Notifications</span>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllRead}
+                        style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    gap: 4,
+                    padding: '8px 16px',
+                    borderBottom: darkMode ? '1px solid #334155' : '1px solid #edf5ed',
+                    background: darkMode ? '#1e293b' : 'white'
+                  }}>
+                    {['All', 'High', 'Medium', 'Low'].map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setNotificationFilter(p)}
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: 4,
+                          fontSize: 9,
+                          fontWeight: 800,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: notificationFilter === p ? (darkMode ? '#34d399' : '#355e3b') : (darkMode ? '#334155' : '#f1f5f9'),
+                          color: notificationFilter === p ? (darkMode ? '#0f172a' : 'white') : (darkMode ? '#cbd5e1' : '#64748b')
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 120 }}>
+                    {notifications
+                      .filter(n => notificationFilter === 'All' || n.priority === notificationFilter)
+                      .length === 0 ? (
+                      <div style={{ padding: '24px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>
+                        No notifications found.
+                      </div>
+                    ) : (
+                      notifications
+                        .filter(n => notificationFilter === 'All' || n.priority === notificationFilter)
+                        .map(notif => (
+                          <div
+                            key={notif.id}
+                            onClick={() => {
+                              handleMarkRead(notif.id);
+                              setShowNotifications(false);
+                              if (notif.patta_id) {
+                                axios.get(`${API}/api/fra/record/${notif.patta_id}`).then(res => {
+                                  setSelected(res.data);
+                                  setShowReview(res.data);
+                                });
+                              }
+                            }}
+                            style={{
+                              padding: '10px 16px',
+                              borderBottom: darkMode ? '1px solid #334155' : '1px solid #edf5ed',
+                              background: !notif.is_read ? (darkMode ? '#11221a' : '#f0fdf4') : 'transparent',
+                              cursor: 'pointer',
+                              transition: 'background 0.2s',
+                              display: 'flex',
+                              gap: 8,
+                              alignItems: 'flex-start'
+                            }}
+                          >
+                            <div style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              background: notif.priority === 'High' ? '#ef4444' : (notif.priority === 'Medium' ? '#f59e0b' : '#3b82f6'),
+                              marginTop: 5,
+                              flexShrink: 0
+                            }} />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{notif.title}</div>
+                              <div style={{ fontSize: 10, color: darkMode ? '#cbd5e1' : '#475569', marginTop: 2, lineHeight: 1.3 }}>{notif.message}</div>
+                              <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 4 }}>{notif.created_at}</div>
+                            </div>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Dark Mode Moon/Sun toggle */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: darkMode ? '#e2e8f0' : '#2d4030',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 6,
+              borderRadius: '50%',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          >
+            {darkMode ? <Sun size={18} color="#e8c547" /> : <Moon size={18} />}
+          </button>
+
           {isAuthenticated && loggedInOfficer && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontSize: 10.5, color: '#334155' }}>
-              <span style={{ fontWeight: 800, color: '#1e3a8a' }}>{loggedInOfficer.designation.split(' ')[0]} Locked</span>
-              <span style={{ fontSize: 9.5, color: '#475569', fontWeight: 600 }}>Jurisdiction: <strong>{loggedInOfficer.jurisdiction}</strong></span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontSize: 10.5, color: darkMode ? '#cbd5e1' : '#334155' }}>
+              <span style={{ fontWeight: 800, color: darkMode ? '#60a5fa' : '#1e3a8a' }}>{loggedInOfficer.designation.split(' ')[0]} Locked</span>
+              <span style={{ fontSize: 9.5, color: darkMode ? '#94a3b8' : '#475569', fontWeight: 600 }}>Jurisdiction: <strong>{loggedInOfficer.jurisdiction}</strong></span>
             </div>
           )}
           
           <div style={{
-            background: '#f4f9f4',
+            background: darkMode ? '#1e293b' : '#f4f9f4',
             borderRadius: 8,
             padding: '3px',
-            border: '1px solid #cbdcce',
+            border: darkMode ? '1px solid #334155' : '1px solid #cbdcce',
             display: 'flex',
             alignItems: 'center'
           }}>
@@ -762,9 +1006,9 @@ export default function App() {
                 }
               }}
               style={{
-                background: userMode === 'public' ? '#2e7d32' : 'none',
+                background: userMode === 'public' ? (darkMode ? '#34d399' : '#2e7d32') : 'none',
                 border: 'none',
-                color: userMode === 'public' ? '#ffffff' : '#556a59',
+                color: userMode === 'public' ? (darkMode ? '#0f172a' : '#ffffff') : (darkMode ? '#cbd5e1' : '#556a59'),
                 padding: '5px 12px',
                 borderRadius: 6,
                 fontSize: 10,
@@ -782,6 +1026,7 @@ export default function App() {
             <button
               onClick={() => {
                 if (isAuthenticated) {
+                  setView('dashboard');
                   setUserMode('official');
                 } else {
                   setShowLoginModal(true);
@@ -790,7 +1035,7 @@ export default function App() {
               style={{
                 background: userMode === 'official' ? '#1976d2' : 'none',
                 border: 'none',
-                color: userMode === 'official' ? '#ffffff' : '#556a59',
+                color: userMode === 'official' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#556a59'),
                 padding: '5px 12px',
                 borderRadius: 6,
                 fontSize: 10,
@@ -1375,11 +1620,29 @@ export default function App() {
           )}
         </div>
 
+        {/* VIEW: Officer Dashboard */}
+        {view === 'dashboard' && (
+          <DashboardManager
+            officer={loggedInOfficer}
+            darkMode={darkMode}
+            onReviewClaim={(r) => {
+              setSelected(r);
+              setShowReview(r);
+            }}
+            onLocateOnMap={(r) => {
+              locateOnMap(r);
+            }}
+          />
+        )}
+
         {/* VIEW: Claims Database Table */}
         {view === 'database' && (
           <RecordsTable
             userMode={userMode}
-            onReviewClaim={(r) => setShowReview(r)}
+            onReviewClaim={(r) => {
+              setSelected(r);
+              setShowReview(r);
+            }}
             onPrintDeed={(r) => setShowDeed(r)}
             onLocateOnMap={locateOnMap}
             filters={filters}
@@ -1391,12 +1654,12 @@ export default function App() {
 
         {/* VIEW: Analytics Dashboard */}
         {view === 'analytics' && (
-          <Analytics onBack={() => setView('map')} />
+          <Analytics onBack={() => setView('dashboard')} />
         )}
 
         {/* VIEW: Decision Support System */}
         {view === 'dss' && (
-          <DSS onBack={() => setView('map')} jurisdiction={loggedInOfficer?.jurisdiction} />
+          <DSS onBack={() => setView('dashboard')} jurisdiction={loggedInOfficer?.jurisdiction} />
         )}
 
         {/* VIEW: Tribes Info Section */}
@@ -1416,13 +1679,39 @@ export default function App() {
         <PattaCertificate record={showDeed} onClose={() => setShowDeed(null)} />
       )}
 
-      {/* ── REVIEW DIALOG MODAL ─────────────────────────────── */}
+      {/* ── REVIEW DIALOG WORKSPACE MODAL ───────────────────── */}
       {showReview && (
-        <ClaimReviewModal
-          record={showReview}
-          onClose={() => setShowReview(null)}
-          onSave={handleReviewSave}
-        />
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(15, 23, 42, 0.45)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9998,
+        }}>
+          <div style={{
+            background: darkMode ? '#1e293b' : 'white',
+            width: '95vw',
+            height: '92vh',
+            borderRadius: 16,
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+            border: darkMode ? '1px solid #334155' : '1px solid #cbdcce',
+            overflow: 'hidden'
+          }}>
+            <ClaimWorkspace
+              record={showReview}
+              officer={loggedInOfficer}
+              darkMode={darkMode}
+              onClose={() => setShowReview(null)}
+              onSave={handleReviewSave}
+            />
+          </div>
+        </div>
       )}
 
       {/* ── LOGIN MODAL ────────────────────────────────────── */}

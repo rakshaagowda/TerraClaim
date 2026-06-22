@@ -26,6 +26,7 @@ export default function ClaimReviewModal({ record, onClose, onSave }) {
   
   const [gsReport, setGsReport] = useState('');
   const [gsDocName, setGsDocName] = useState('');
+  const [uploadedDocName, setUploadedDocName] = useState('');
   
   const [sdlcReport, setSdlcReport] = useState('');
   const [sdlcDocName, setSdlcDocName] = useState('');
@@ -58,7 +59,8 @@ export default function ClaimReviewModal({ record, onClose, onSave }) {
       setGsDocName(record.gs_document || '');
       
       setSdlcReport(record.sdlc_report || '');
-      setSdlcDocName(record.sdlc_document || record.uploaded_document || '');
+      setSdlcDocName(record.sdlc_document || '');
+      setUploadedDocName(record.uploaded_document || '');
       
       setDlcReport(record.dlc_report || '');
       setDlcDocName(record.dlc_document || '');
@@ -104,7 +106,7 @@ export default function ClaimReviewModal({ record, onClose, onSave }) {
       
       sdlc_report: sdlcReport || null,
       sdlc_document: sdlcDocName || null,
-      uploaded_document: sdlcDocName || null,
+      uploaded_document: uploadedDocName || null,
       
       dlc_report: dlcReport || null,
       dlc_document: dlcDocName || null,
@@ -416,6 +418,36 @@ export default function ClaimReviewModal({ record, onClose, onSave }) {
                         }}
                       >
                         {gsDocName ? `📎 ${gsDocName}` : '📂 Choose Gram Sabha PDF'}
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={lblStyle}>Physically Uploaded Applicant Claim Documentation (Form A Scan / photo ID / Land sketch)</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="file"
+                        id="applicantDocUpload"
+                        style={{ display: 'none' }}
+                        onChange={e => setUploadedDocName(e.target.files[0]?.name || '')}
+                      />
+                      <label
+                        htmlFor="applicantDocUpload"
+                        style={{
+                          flex: 1,
+                          padding: '8px 10px',
+                          border: '1.5px dashed #cbdcce',
+                          borderRadius: 6,
+                          textAlign: 'center',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: '#355e3b',
+                          cursor: 'pointer',
+                          background: '#fff',
+                          display: 'block'
+                        }}
+                      >
+                        {uploadedDocName ? `📎 ${uploadedDocName}` : '📂 Choose Applicant physical scans / deeds'}
                       </label>
                     </div>
                   </div>

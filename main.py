@@ -1,13 +1,20 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import psycopg2
 import psycopg2.extras
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 from pydantic import BaseModel
+import os
+import shutil
+import math
+import time
 
 app = FastAPI(title="FRA Atlas API", version="1.0.0")
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -356,6 +363,153 @@ def get_spatial_verification(record):
         "sanctuary_name": sanctuary_name
     }
 
+def get_claim_intelligence(record):
+    patta_id = record['patta_id']
+    claimant_name = record.get('claimant_name') or ''
+    village = record.get('village') or ''
+    district = record.get('district') or ''
+    tribal_community = record.get('tribal_community') or ''
+    acres = float(record.get('claim_area_acres') or 0.0)
+    ha = float(record.get('claim_area_ha') or (acres * 0.404686))
+    
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # 1. Fetch uploaded documents
+    try:
+        cur.execute("SELECT document_type FROM claim_documents WHERE patta_id = %s;", (patta_id,))
+        uploaded_types = [r[0] for r in cur.fetchall()]
+    except Exception:
+        uploaded_types = []
+        
+    # 2. Check for duplicate claims
+    # Similar claimant name in the same village/district OR very close coordinates (within 0.001 deg ~ 100m)
+    duplicates = []
+    try:
+        cur.execute("""
+            SELECT patta_id, claimant_name, village 
+            FROM fra_records 
+            WHERE patta_id != %s AND (
+                (claimant_name ILIKE %s AND village ILIKE %s)
+                OR (ST_DWithin(geom, (SELECT geom FROM fra_records WHERE patta_id = %s), 0.001))
+            );
+        """, (patta_id, f"%{claimant_name.strip()}%", f"%{village.strip()}%", patta_id))
+        dup_rows = cur.fetchall()
+        for d_id, d_name, d_vil in dup_rows:
+            duplicates.append({"patta_id": d_id, "claimant_name": d_name, "village": d_vil})
+    except Exception:
+        # Fallback if geom/PostGIS function errors
+        try:
+            conn.rollback()
+            cur.execute("""
+                SELECT patta_id, claimant_name, village 
+                FROM fra_records 
+                WHERE patta_id != %s AND claimant_name ILIKE %s AND village ILIKE %s;
+            """, (patta_id, f"%{claimant_name.strip()}%", f"%{village.strip()}%"))
+            dup_rows = cur.fetchall()
+            for d_id, d_name, d_vil in dup_rows:
+                duplicates.append({"patta_id": d_id, "claimant_name": d_name, "village": d_vil})
+        except Exception:
+            pass
+            
+    cur.close()
+    conn.close()
+    
+    # 3. Missing document detection
+    required_types = ['Aadhaar / Identity documents', 'Land records', 'Survey sketches']
+    if 'A' in record.get('form_type', 'Form A (IFR)'):
+        required_types.append('Form A (Individual Forest Rights)')
+    elif 'B' in record.get('form_type', ''):
+        required_types.append('Form B (Community Rights)')
+    else:
+        required_types.append('Form C (Community Forest Resource Rights)')
+        
+    missing_docs = []
+    for req_doc in required_types:
+        has_doc = False
+        prefix = req_doc.split(' ')[0].lower()
+        for up in uploaded_types:
+            if prefix in up.lower() or (up.lower().startswith('form') and 'form' in prefix):
+                has_doc = True
+                break
+        if not has_doc:
+            missing_docs.append(req_doc)
+            
+    # 4. FRA Rule Compliance
+    compliance = []
+    karnataka_st_list = ['Soliga','Jenu Kuruba','Nayaka','Betta Kuruba','Paniyan','Koraga','Malekudiya','Hasala','Hakki-Pikki','Iruliga','Yerava','Adi Kurumba']
+    is_st = tribal_community.lower() in [t.lower() for t in karnataka_st_list]
+    
+    # Check limit cap (4.0 Ha)
+    if ha <= 4.0:
+        compliance.append({"rule": "Section 4(6) Area limit <= 4 Hectares", "status": "Pass", "detail": f"Claimed area is {ha:.4f} Ha, which respects the statutory cap."})
+    else:
+        compliance.append({"rule": "Section 4(6) Area limit <= 4 Hectares", "status": "Fail", "detail": f"Claimed area is {ha:.4f} Ha, which exceeds the legal cap of 4.0 Ha."})
+        
+    # Check category requirements
+    if is_st:
+        compliance.append({"rule": "Scheduled Tribe (ST) Eligibility", "status": "Pass", "detail": f"Claimant is verified Scheduled Tribe ({tribal_community}). Exempt from 75-year occupancy rule."})
+    else:
+        has_otfd_proof = any('affidavit' in t.lower() or 'supporting' in t.lower() or 'land' in t.lower() or 'record' in t.lower() for t in uploaded_types)
+        if has_otfd_proof:
+            compliance.append({"rule": "OTFD 75-Year (3 Generations) occupancy proof", "status": "Pass", "detail": "Claimant is registered as OTFD; supporting historical residency files are present."})
+        else:
+            compliance.append({"rule": "OTFD 75-Year (3 Generations) occupancy proof", "status": "Warning", "detail": "Claimant is registered as OTFD; 3 generations (75 years) residency proof / affidavit is missing."})
+            
+    # Check spatial overlap
+    spatial = record.get('spatial_verify') or {}
+    overlap_pct = spatial.get('overlap_percentage') or 0.0
+    if spatial.get('boundary_valid', True):
+        compliance.append({"rule": "Protected Forest Corridor Overlap Audit", "status": "Pass", "detail": "Spatial analysis confirms boundary does not conflict with protected zones."})
+    else:
+        compliance.append({"rule": "Protected Forest Corridor Overlap Audit", "status": "Warning", "detail": f"Spatial overlap of {overlap_pct}% detected in sanctuary buffer corridor."})
+        
+    # 5. Eligibility Score (out of 100)
+    passed_rules = sum(1 for c in compliance if c['status'] == 'Pass')
+    doc_score = (len(required_types) - len(missing_docs)) / len(required_types) * 50
+    rule_score = passed_rules / len(compliance) * 50
+    eligibility_score = int(doc_score + rule_score)
+    
+    # 6. Risk Scoring
+    risk_score = 0
+    if len(duplicates) > 0:
+        risk_score += 25
+    if len(missing_docs) > 0:
+        risk_score += 25
+    if not spatial.get('boundary_valid', True):
+        risk_score += 30
+    if ha > 4.0:
+        risk_score += 20
+        
+    # 7. Recommendation Engine
+    if eligibility_score >= 85 and risk_score <= 10:
+        recommendation = "Approve"
+        rec_reason = "All statutory legal checks and spatial audits passed. Highly eligible for forest title grant."
+    elif eligibility_score < 50 or risk_score >= 50:
+        recommendation = "Reject"
+        rec_reason = "Severe compliance failures, excessive spatial overlap with sanctuary buffer, or missing document checklist."
+    else:
+        recommendation = "Review Required"
+        rec_reason = "Pending verification of missing documents, clarification check, or spatial overlap boundary modification."
+        
+    # 8. AI Claim Assessment Summary text
+    st_text = f"Claimant {claimant_name} is from the {tribal_community} community, a verified Scheduled Tribe in Karnataka." if is_st else f"Claimant {claimant_name} is an Other Traditional Forest Dweller (OTFD)."
+    overlap_text = f" The plot overlaps by {overlap_pct}% with the {spatial.get('sanctuary_name') or 'protected forest buffer'}." if not spatial.get('boundary_valid', True) else " No critical sanctuary overlaps were detected."
+    missing_text = f" Missing checklist: {', '.join(missing_docs)}." if len(missing_docs) > 0 else " All basic identity, land, and survey files are present."
+    
+    ai_assessment = f"{st_text}{overlap_text}{missing_text} Under the Forest Rights Act 2006 rules, this claim has an eligibility score of {eligibility_score}% and risk rating of {risk_score}%. Recommendation is: **{recommendation}** ({rec_reason})."
+    
+    return {
+        "eligibility_score": eligibility_score,
+        "duplicate_claims": duplicates,
+        "missing_documents": missing_docs,
+        "compliance_checks": compliance,
+        "risk_score": risk_score,
+        "recommendation": recommendation,
+        "recommendation_reason": rec_reason,
+        "ai_assessment": ai_assessment
+    }
+
 # ── SINGLE RECORD ───────────────────────────────────────────
 @app.get("/api/fra/record/{patta_id}")
 def get_record(patta_id: str):
@@ -385,6 +539,7 @@ def get_record(patta_id: str):
         record["lng"], record["lat"] = 76.0, 12.0
         
     record['spatial_verify'] = get_spatial_verification(record)
+    record['intelligence'] = get_claim_intelligence(record)
     return record
 
 
@@ -500,6 +655,295 @@ def search(q: str = Query(..., min_length=2)):
     return {"results": [clean_dict(dict(r)) for r in rows]}
 
 
+# ── DOCUMENT WORKFLOW ENDPOINTS ──────────────────────────────
+@app.post("/api/fra/claim/{patta_id}/upload-docs")
+def upload_documents(
+    patta_id: str,
+    files: List[UploadFile] = File(...),
+    stage: str = Form(...),
+    document_type: str = Form(...),
+    uploaded_by: str = Form(...)
+):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT claimant_name, district FROM fra_records WHERE patta_id = %s;", (patta_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Claim record not found.")
+    
+    saved_docs = []
+    claimant_name, district = row
+    claim_dir = os.path.join(UPLOAD_DIR, patta_id)
+    os.makedirs(claim_dir, exist_ok=True)
+    
+    for file in files:
+        file_name = file.filename
+        safe_name = "".join([c for c in file_name if c.isalpha() or c.isdigit() or c in (".", "_", "-")]).strip()
+        if not safe_name:
+            safe_name = f"uploaded_file_{int(time.time())}"
+            
+        file_path = os.path.join(claim_dir, safe_name)
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        except Exception as e:
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=500, detail=f"Failed to write file {file_name} to disk: {str(e)}")
+            
+        file_size = os.path.getsize(file_path)
+        mime_type = file.content_type or "application/octet-stream"
+        
+        cur.execute("""
+            INSERT INTO claim_documents (patta_id, stage, document_type, file_name, file_path, file_size, mime_type, uploaded_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id;
+        """, (patta_id, stage, document_type, safe_name, file_path, file_size, mime_type, uploaded_by))
+        doc_id = cur.fetchone()[0]
+        saved_docs.append({"id": doc_id, "file_name": safe_name})
+        
+        # Log to audit trail
+        cur.execute("""
+            INSERT INTO claim_audit_trail (patta_id, officer_id, officer_name, designation, action, stage, description)
+            VALUES (%s, %s, %s, %s, 'Document Upload', %s, %s);
+        """, (
+            patta_id,
+            uploaded_by if uploaded_by != 'Applicant' else None,
+            uploaded_by if uploaded_by != 'Applicant' else 'Applicant',
+            stage.upper() + " Officer" if uploaded_by != 'Applicant' else 'Applicant',
+            stage,
+            f"Uploaded document '{safe_name}' ({document_type}) at {stage} stage."
+        ))
+        
+        # Trigger notification
+        target_role = "Sub-Divisional Committee (SDLC) Officer"
+        if stage == 'gram_sabha':
+            target_role = "Sub-Divisional Committee (SDLC) Officer"
+        elif stage == 'sdlc':
+            target_role = "District Level Committee (DLC) Officer"
+        elif stage == 'dlc':
+            target_role = "State Review Authority"
+            
+        cur.execute("""
+            INSERT INTO notifications (role, jurisdiction, patta_id, title, message, priority)
+            VALUES (%s, %s, %s, %s, %s, 'Medium');
+        """, (
+            target_role,
+            district,
+            patta_id,
+            f"New Document Uploaded - {patta_id}",
+            f"Officer {uploaded_by} uploaded '{safe_name}' ({document_type}) at the {stage} level."
+        ))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "success", "uploaded_files": saved_docs}
+
+@app.get("/api/fra/claim/{patta_id}/documents")
+def get_claim_documents(patta_id: str):
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT id, patta_id, stage, document_type, file_name, file_size, mime_type, uploaded_by, uploaded_at::text
+        FROM claim_documents
+        WHERE patta_id = %s
+        ORDER BY uploaded_at DESC;
+    """, (patta_id,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.get("/api/fra/claim/document/{doc_id}/download")
+def download_document(doc_id: int, officer_id: Optional[str] = None, officer_name: Optional[str] = None):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT file_path, file_name, mime_type, patta_id FROM claim_documents WHERE id = %s;", (doc_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Document not found.")
+    
+    file_path, file_name, mime_type, patta_id = row
+    if not os.path.exists(file_path):
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Physical file not found on server storage.")
+        
+    if officer_id:
+        cur.execute("""
+            INSERT INTO claim_audit_trail (patta_id, officer_id, officer_name, action, stage, description)
+            VALUES (%s, %s, %s, 'Document Download', 'Audit', %s);
+        """, (patta_id, officer_id, officer_name or 'Officer', f"Downloaded document '{file_name}'."))
+        conn.commit()
+        
+    cur.close()
+    conn.close()
+    return FileResponse(path=file_path, filename=file_name, media_type=mime_type)
+
+class CommentRequest(BaseModel):
+    officer_id: str
+    officer_name: str
+    designation: str
+    comment_type: str
+    comment: str
+    action_taken: str
+
+@app.post("/api/fra/claim/{patta_id}/comments")
+def add_comment(patta_id: str, req: CommentRequest):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO claim_comments (patta_id, officer_id, officer_name, designation, comment_type, comment, action_taken)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id;
+    """, (patta_id, req.officer_id, req.officer_name, req.designation, req.comment_type, req.comment, req.action_taken))
+    comment_id = cur.fetchone()[0]
+    
+    cur.execute("""
+        INSERT INTO claim_audit_trail (patta_id, officer_id, officer_name, designation, action, stage, description)
+        VALUES (%s, %s, %s, %s, 'Comment Addition', %s, %s);
+    """, (
+        patta_id,
+        req.officer_id,
+        req.officer_name,
+        req.designation,
+        req.designation.split(' ')[0],
+        f"Added {req.comment_type}: '{req.comment[:50]}...'"
+    ))
+    
+    cur.execute("""
+        INSERT INTO notifications (role, jurisdiction, patta_id, title, message, priority)
+        VALUES (%s, (SELECT district FROM fra_records WHERE patta_id = %s), %s, %s, %s, 'Low');
+    """, (
+        "Sub-Divisional Committee (SDLC) Officer" if "gs" in req.designation.lower() else "District Level Committee (DLC) Officer",
+        patta_id,
+        patta_id,
+        f"New Comment Added - {patta_id}",
+        f"{req.officer_name} ({req.designation}) added a comment: {req.comment[:60]}"
+    ))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "success", "comment_id": comment_id}
+
+@app.get("/api/fra/claim/{patta_id}/comments")
+def get_comments(patta_id: str):
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT id, patta_id, officer_id, officer_name, designation, comment_type, comment, action_taken, created_at::text
+        FROM claim_comments
+        WHERE patta_id = %s
+        ORDER BY created_at ASC;
+    """, (patta_id,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.get("/api/fra/claim/{patta_id}/audit-trail")
+def get_audit_trail(patta_id: str):
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT id, patta_id, officer_id, officer_name, designation, action, stage, description, created_at::text
+        FROM claim_audit_trail
+        WHERE patta_id = %s
+        ORDER BY created_at DESC;
+    """, (patta_id,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.get("/api/fra/notifications")
+def get_notifications(
+    role: Optional[str] = Query(None),
+    jurisdiction: Optional[str] = Query(None),
+    officer_id: Optional[str] = Query(None)
+):
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    
+    query = """
+        SELECT id, officer_id, role, jurisdiction, patta_id, title, message, priority, is_read, created_at::text
+        FROM notifications
+        WHERE 1=1
+    """
+    params = []
+    
+    is_state_or_admin = False
+    if role:
+        is_state_or_admin = "state" in role.lower() or "admin" in role.lower()
+        
+    if officer_id:
+        query += " AND (officer_id = %s OR (role = %s AND (jurisdiction = %s OR %s = TRUE)))"
+        params.extend([officer_id, role, jurisdiction, is_state_or_admin])
+    else:
+        if role:
+            query += " AND role = %s"
+            params.append(role)
+        if jurisdiction and not is_state_or_admin:
+            query += " AND jurisdiction = %s"
+            params.append(jurisdiction)
+            
+    query += " ORDER BY created_at DESC LIMIT 50;"
+    
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/fra/notifications/{notif_id}/read")
+def mark_notification_read(notif_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE notifications SET is_read = TRUE WHERE id = %s;", (notif_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "success"}
+
+@app.post("/api/fra/notifications/mark-all-read")
+def mark_all_notifications_read(
+    role: Optional[str] = Query(None),
+    jurisdiction: Optional[str] = Query(None),
+    officer_id: Optional[str] = Query(None)
+):
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    query = "UPDATE notifications SET is_read = TRUE WHERE is_read = FALSE"
+    params = []
+    
+    is_state_or_admin = False
+    if role:
+        is_state_or_admin = "state" in role.lower() or "admin" in role.lower()
+        
+    if officer_id:
+        query += " AND (officer_id = %s OR (role = %s AND (jurisdiction = %s OR %s = TRUE)))"
+        params.extend([officer_id, role, jurisdiction, is_state_or_admin])
+    else:
+        if role:
+            query += " AND role = %s"
+            params.append(role)
+        if jurisdiction and not is_state_or_admin:
+            query += " AND jurisdiction = %s"
+            params.append(jurisdiction)
+            
+    cur.execute(query, params)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "success"}
+
 # ── REVIEW UPDATE (PERSIST STATUS) ─────────────────────────────────
 class ReviewRequest(BaseModel):
     status: str
@@ -535,8 +979,12 @@ def review_record(patta_id: str, req: ReviewRequest, officer: dict = Depends(get
         conn.close()
         return JSONResponse({"error": "Record not found"}, status_code=404)
         
-    # Enforce district jurisdiction
-    if officer.get("jurisdiction").lower() != row["district"].lower():
+    # Enforce district jurisdiction (exempting state-wide roles)
+    officer_jurisdiction = officer.get("jurisdiction", "").lower()
+    officer_designation = officer.get("designation", "").lower()
+    is_state_or_admin = "state" in officer_designation or "admin" in officer_designation or officer_jurisdiction == "karnataka"
+    
+    if not is_state_or_admin and officer_jurisdiction != row["district"].lower():
         cur.close()
         conn.close()
         raise HTTPException(
@@ -597,8 +1045,8 @@ def review_record(patta_id: str, req: ReviewRequest, officer: dict = Depends(get
         req.gs_document or None,
         
         req.sdlc_report or None,
-        req.sdlc_document or req.uploaded_document or None,
-        req.uploaded_document or req.sdlc_document or None,
+        req.sdlc_document or None,
+        req.uploaded_document or None,
         
         req.dlc_report or None,
         req.dlc_document or None,
@@ -612,6 +1060,77 @@ def review_record(patta_id: str, req: ReviewRequest, officer: dict = Depends(get
         
         patta_id
     ))
+    # Log the status change in audit trail
+    cur.execute("""
+        INSERT INTO claim_audit_trail (patta_id, officer_id, officer_name, designation, action, stage, description)
+        VALUES (%s, %s, %s, %s, 'Status Change', %s, %s);
+    """, (
+        patta_id,
+        officer.get('officer_id'),
+        officer.get('officer_name', 'Officer'),
+        officer.get('designation'),
+        officer.get('designation').split(' ')[0],
+        f"Claim status updated to '{req.status}'."
+    ))
+    
+    # Append comment/report depending on active stage notes
+    stage_report = None
+    if req.status == 'Gram Sabha Resolved' and req.gs_report:
+        stage_report = req.gs_report
+    elif req.status == 'SDLC Approved' and req.sdlc_report:
+        stage_report = req.sdlc_report
+    elif req.status == 'DLC Approved' and req.dlc_report:
+        stage_report = req.dlc_report
+    elif req.status == 'Title Granted' and req.title_report:
+        stage_report = req.title_report
+    elif req.status == 'Rejected' and req.rejection_reason:
+        stage_report = req.rejection_reason
+        
+    if stage_report:
+        cur.execute("""
+            INSERT INTO claim_comments (patta_id, officer_id, officer_name, designation, comment_type, comment, action_taken)
+            VALUES (%s, %s, %s, %s, %s, %s, %s);
+        """, (
+            patta_id,
+            officer.get('officer_id'),
+            officer.get('officer_name', 'Officer'),
+            officer.get('designation'),
+            'Official Remark',
+            stage_report,
+            req.status
+        ))
+        
+    # Trigger notifications based on status changes
+    target_role = None
+    notif_title = f"Claim Status Updated: {patta_id}"
+    notif_msg = f"Claim {patta_id} has been moved to status '{req.status}' by {officer.get('designation')}."
+    
+    if req.status == 'Gram Sabha Resolved':
+        target_role = 'Sub-Divisional Committee (SDLC) Officer'
+    elif req.status == 'SDLC Approved':
+        target_role = 'District Level Committee (DLC) Officer'
+    elif req.status == 'DLC Approved':
+        target_role = 'State Review Authority'
+    elif req.status == 'Title Granted':
+        target_role = 'System Administrator'
+        notif_title = f"Title Deed Granted - {patta_id}"
+        notif_msg = f"Final Title Deed certificate has been registered and certified for claimant {row['claimant_name'] or 'claimant'}."
+    elif req.status == 'Rejected':
+        notif_title = f"Application Rejected - {patta_id}"
+        notif_msg = f"Application has been rejected due to: {req.rejection_reason}"
+        
+    cur.execute("""
+        INSERT INTO notifications (role, jurisdiction, patta_id, title, message, priority)
+        VALUES (%s, %s, %s, %s, %s, %s);
+    """, (
+        target_role or 'System Administrator',
+        row['district'],
+        patta_id,
+        notif_title,
+        notif_msg,
+        'High' if req.status in ('Rejected', 'Title Granted') else 'Medium'
+    ))
+
     conn.commit()
     
     # Retrieve updated record
@@ -679,13 +1198,17 @@ def officer_login(req: OfficerLoginRequest):
         'CHM': 'Chikkamagaluru',
         'CHN': 'Chamarajanagara',
         'SHI': 'Shivamogga',
-        'HAS': 'Hassan'
+        'HAS': 'Hassan',
+        'KAR': 'Karnataka'
     }
     
     role_map = {
+        'GS': 'Gram Sabha Officer',
         'FRO': 'Forest Rights Officer (FRO)',
         'SDLC': 'Sub-Divisional Committee (SDLC) Officer',
-        'DLC': 'District Level Committee (DLC) Officer'
+        'DLC': 'District Level Committee (DLC) Officer',
+        'STATE': 'State Review Authority',
+        'ADMIN': 'System Administrator'
     }
     
     expected_dist = dist_map.get(dist_code)
@@ -829,8 +1352,28 @@ def submit_claim(req: ClaimSubmitRequest):
             req.claim_area_acres, ha,
             status, geom
         ))
-        conn.commit()
         created_id = cur.fetchone()[0]
+        
+        # Log to audit trail
+        cur.execute("""
+            INSERT INTO claim_audit_trail (patta_id, officer_id, officer_name, designation, action, stage, description)
+            VALUES (%s, NULL, 'Applicant', 'Public Citizen', 'Status Change', 'Applicant', 'New land claim application filed by citizen.');
+        """, (created_id,))
+        
+        # Send notification to Gram Sabha Officers
+        cur.execute("""
+            INSERT INTO notifications (role, jurisdiction, patta_id, title, message, priority)
+            VALUES (%s, %s, %s, %s, %s, %s);
+        """, (
+            'Gram Sabha Officer',
+            req.district,
+            created_id,
+            f"New Claim Submitted - {created_id}",
+            f"A new claim has been submitted by {req.claimant_name} in village {req.village}.",
+            'Medium'
+        ))
+        
+        conn.commit()
         cur.close()
         conn.close()
         
