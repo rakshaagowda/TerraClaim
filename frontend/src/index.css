@@ -1,74 +1,93 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* Light Theme Color System */
+  --primary: #166534;
+  --primary-hover: #14532d;
+  --secondary: #22c55e;
+  --accent: #10b981;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --border: #e2e8f0;
+  
+  /* Glass and shadow effects */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
+  
+  /* Layout sizes */
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 78px;
+  --navbar-height: 70px;
+}
+
+/* Dark Theme Color System Overrides */
+.dark-mode {
+  --bg: #090d16;
+  --card: #111827;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --border: #1f2937;
+  
+  --glass-bg: rgba(17, 24, 39, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.25), 0 2px 4px -1px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+}
 
 * { 
   margin: 0; 
   padding: 0; 
   box-sizing: border-box; 
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
 body {
-  background: #f4f9f4;
-  color: #1a1a1a;
+  background: var(--bg);
+  color: var(--text-primary);
   height: 100vh;
   overflow: hidden;
+  letter-spacing: -0.011em;
 }
 
-/* Glassmorphism utility classes */
+/* Premium Glassmorphism classes */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-md);
+}
+
+.glass-card {
+  background: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px; /* rounded-2xl */
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s;
 }
 
-.glass-dark {
-  background: rgba(19, 42, 19, 0.8);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+.glass-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(16, 185, 129, 0.25);
 }
 
-.maplibregl-ctrl-group {
-  background: rgba(255, 255, 255, 0.9) !important;
-  backdrop-filter: blur(8px) !important;
-  border: 1px solid #cbdcce !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important;
-  overflow: hidden;
-}
-
-.maplibregl-ctrl-group button {
-  background: transparent !important;
-  border-bottom: 1px solid #edf5ed !important;
-  color: #2d5a27 !important;
-  width: 36px !important;
-  height: 36px !important;
-}
-
-.maplibregl-ctrl-group button:last-child {
-  border-bottom: none !important;
-}
-
-.maplibregl-ctrl-group button:hover {
-  background: #edf5ed !important;
-}
-
-.maplibregl-popup-content {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border: 1px solid #c8dcd0;
-  border-radius: 14px;
-  padding: 14px;
-  color: #2d4030;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-}
-
-.maplibregl-popup-tip { display: none; }
-
-/* Custom Scrollbar */
+/* Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -77,19 +96,140 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbdcce;
-  border-radius: 10px;
+  background: var(--border);
+  border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a7c59;
+  background: var(--accent);
 }
 
-/* Animations */
+/* MapLibre GL Overrides for ArcGIS / Mapbox Studio Look */
+.maplibregl-ctrl-group {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 10px !important;
+  box-shadow: var(--shadow-md) !important;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text-primary) !important;
+  width: 32px !important;
+  height: 32px !important;
+  transition: background-color 0.2s;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.maplibregl-ctrl-group button:last-child {
+  border-bottom: none !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: rgba(16, 185, 129, 0.08) !important;
+  color: var(--accent) !important;
+}
+
+.maplibregl-popup-content {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-lg) !important;
+  font-family: inherit !important;
+}
+
+.maplibregl-popup-close-button {
+  color: var(--text-secondary) !important;
+  padding: 4px 6px !important;
+  outline: none;
+}
+
+.maplibregl-popup-tip {
+  display: none !important;
+}
+
+/* Animation System */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes pulse-skeleton {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+}
+
 .fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.slide-in-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.skeleton {
+  background: var(--border);
+  animation: pulse-skeleton 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* Custom UI helper components */
+.badge-ifr {
+  background: rgba(34, 197, 94, 0.1);
+  color: #166534;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+.dark-mode .badge-ifr {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.badge-cr {
+  background: rgba(245, 158, 11, 0.1);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+.dark-mode .badge-cr {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.badge-cfr {
+  background: rgba(139, 92, 246, 0.1);
+  color: #5b21b6;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+.dark-mode .badge-cfr {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+/* Floating Elements Styling */
+.floating-bar {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 2px 8px -1px rgba(0, 0, 0, 0.04);
+}
+
+.dark-mode .floating-bar {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4), 0 2px 8px -1px rgba(0, 0, 0, 0.3);
 }

@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Search, Filter, ShieldAlert, FileText, MapPin, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { 
+  Search, Filter, ShieldAlert, FileText, MapPin, ChevronLeft, ChevronRight, 
+  Info, FileSpreadsheet, PlusCircle, CheckCircle, HelpCircle, ArrowUpDown, Download
+} from 'lucide-react';
 
 const API = 'http://localhost:8000';
 
 const STATUS_COLOR = {
-  'Title Granted':       '#2e7d32',
-  'DLC Approved':        '#7c4dff',
-  'SDLC Approved':       '#1976d2',
-  'Under Verification':  '#ef6c00',
-  'Claim Filed':         '#78909c',
-  'Gram Sabha Resolved': '#0097a7',
-  'Rejected':            '#c62828',
+  'Title Granted':       '#22c55e',
+  'DLC Approved':        '#a855f7',
+  'SDLC Approved':       '#3b82f6',
+  'Under Verification':  '#f59e0b',
+  'Claim Filed':         '#64748b',
+  'Gram Sabha Resolved': '#06b6d4',
+  'Rejected':            '#ef4444',
 };
 
 const DISTRICTS = ['Mysuru', 'Chamarajanagara', 'Shivamogga', 'Chikkamagaluru', 'Kodagu', 'Hassan'];
@@ -76,7 +79,6 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
     setUploading(true);
     setUploadStatus('');
     
-    // Ingest 3 mock claims representing newly collected land claims for this district
     const mockClaims = [
       { claimant_name: 'Devaiah Gowda', village: 'Birunani', taluk: 'Virajpet', district: jurisdiction || 'Kodagu', tribal_community: 'Jenu Kuruba', claim_area_acres: 3.2, form_type: 'Form A (IFR)', lat: 12.12, lng: 75.82, status: 'Gram Sabha Resolved' },
       { claimant_name: 'Somanna K.', village: 'Birunani', taluk: 'Virajpet', district: jurisdiction || 'Kodagu', tribal_community: 'Soliga', claim_area_acres: 1.8, form_type: 'Form A (IFR)', lat: 12.14, lng: 75.84, status: 'Gram Sabha Resolved' },
@@ -88,13 +90,13 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
     Promise.all(promises)
       .then(responses => {
         setUploading(false);
-        setUploadStatus(`Successfully ingested and registered ${responses.length} new land claims into the spatial ledger under ${jurisdiction || 'your district'} with status Gram Sabha Resolved.`);
+        setUploadStatus(`Successfully ingested ${responses.length} land claims into ledger under ${jurisdiction || 'your district'}.`);
         setSelectedUploadFile(null);
-        fetchRecords(); // Reload the table
+        fetchRecords();
       })
-      .catch(err => {
+      .catch(() => {
         setUploading(false);
-        setUploadStatus('Bulk ingestion failed. Please verify spreadsheet columns and API status.');
+        setUploadStatus('Bulk ingestion failed. Please verify API status.');
       });
   };
 
@@ -113,13 +115,13 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
       claim_area_acres: parseFloat(manualClaim.claim_area_acres),
       lat: parseFloat(manualClaim.lat),
       lng: parseFloat(manualClaim.lng),
-      status: 'Gram Sabha Resolved' // Automatically seed at Gram Sabha Resolved so it shows up in SDLC pending
+      status: 'Gram Sabha Resolved'
     };
 
     axios.post(`${API}/api/fra/claim/submit`, payload)
       .then(res => {
         setUploading(false);
-        setUploadStatus(`Successfully registered new land claim (Patta ID: ${res.data.patta_id}) for ${payload.claimant_name} under Gram Sabha Resolved status.`);
+        setUploadStatus(`Successfully registered claim (ID: ${res.data.patta_id}) for ${payload.claimant_name}.`);
         setManualClaim({
           claimant_name: '',
           village: '',
@@ -130,7 +132,7 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
           lat: '',
           lng: ''
         });
-        fetchRecords(); // Reload list
+        fetchRecords();
       })
       .catch(err => {
         setUploading(false);
@@ -157,8 +159,6 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
 
   const handleAutofillSampleDetails = () => {
     const district = jurisdiction || 'Kodagu';
-    
-    // Choose appropriate names and regions
     const names = ['Kariappa Gowda', 'Shivappa Soliga', 'Devi Kuruba', 'Somanna Yerava', 'Putta Hasala'];
     const name = names[Math.floor(Math.random() * names.length)];
     
@@ -182,7 +182,6 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
     const randomForm = FORMS[Math.floor(Math.random() * FORMS.length)];
     const acres = (Math.random() * 4.5 + 0.5).toFixed(2);
     
-    // Generate random coordinates in jurisdiction bounds
     let minLat, maxLat, minLng, maxLng;
     if (district === 'Kodagu') {
       minLat = 12.10; maxLat = 12.40; minLng = 75.70; maxLng = 75.95;
@@ -208,7 +207,6 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
     });
   };
 
-  // Trigger filtering
   useEffect(() => {
     let out = [...records];
 
@@ -228,7 +226,6 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
       out = out.filter(r => r.district === filters.district);
     }
 
-    // Pipeline Stage Filter for "My Pipeline Inbox"
     if (userMode === 'official' && activeTab === 'inbox') {
       const designation = loggedInOfficer?.designation || '';
       if (designation.includes('FRO') || designation.includes('Forest Rights')) {
@@ -281,122 +278,109 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
     }
   };
 
+  const exportCSV = (recordsToExport) => {
+    const headers = ['Patta ID', 'Claimant Name', 'Form Category', 'Village', 'Taluk', 'District', 'Tribe Community', 'Area (Acres)', 'Status'];
+    const rows = recordsToExport.map(r => [
+      r.patta_id, r.claimant_name || 'Village Community', r.form_type, r.village, r.taluk, r.district, r.tribal_community, r.claim_area_acres, r.status
+    ]);
+    const csvContent = [headers, ...rows].map(row => row.map(v => `"${v ?? ''}"`).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `fra_claims_ledger_${activeTab}.csv`);
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const indexOfLast = currentPage * recordsPerPage;
   const indexOfFirst = indexOfLast - recordsPerPage;
   const currentRecords = filtered.slice(indexOfFirst, indexOfLast);
   const totalPages = Math.ceil(filtered.length / recordsPerPage);
 
   const selStyle = {
-    background: 'white',
-    border: '1px solid #c8dcd0',
-    borderRadius: 6,
+    background: 'var(--card)',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
     padding: '6px 10px',
-    fontSize: 12,
-    color: '#2d4030',
+    fontSize: 12.5,
+    color: 'var(--text-primary)',
     fontFamily: 'inherit',
     outline: 'none',
-    minWidth: 110
-  };
-
-  const badgeStyle = (form) => {
-    const isA = form.includes('A');
-    const isB = form.includes('B');
-    return {
-      fontSize: 9,
-      fontWeight: 700,
-      padding: '2px 6px',
-      borderRadius: 3,
-      background: isA ? '#dbeafe' : isB ? '#ede9fe' : '#dcfce7',
-      color: isA ? '#1e40af' : isB ? '#5b21b6' : '#166534',
-    };
+    minWidth: 110,
+    cursor: 'pointer'
   };
 
   return (
-    <div style={{
-      flex: 1,
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      background: '#f4f9f4',
-      padding: '20px 24px',
-      boxSizing: 'border-box',
-      overflow: 'hidden'
-    }}>
+    <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', padding: '20px 24px', overflow: 'hidden' }} className="fade-in">
       
-      {/* Page Title & Explanation */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      {/* Page Title */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a301a', margin: 0 }}>Claims Digitization Ledger</h2>
-          <p style={{ fontSize: 11, color: '#4a7c59', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>Claims Spatial Ledger</h2>
+          <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '3px 0 0', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
             Master Administrative Records Database
           </p>
         </div>
-        <div style={{
-          background: '#e8f2e8',
-          border: '1px solid #cbdcce',
-          borderRadius: 6,
-          padding: '8px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          maxWidth: 460
-        }}>
-          <Info size={16} color="#2e7d32" style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: 10, color: '#2d4030', lineHeight: 1.3 }}>
-            <strong>Self-Explanatory Guide</strong>: View coordinates, track validation stages, and locate points. Switch role to <strong>Official</strong> (top-right) to unlock the 10-Point Legal Audit panel.
+        
+        <div style={{ background: 'rgba(22, 101, 52, 0.05)', border: '1px solid rgba(22, 101, 52, 0.1)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, maxWidth: 500 }}>
+          <Info size={16} color="var(--primary)" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+            <strong>Ledger Guide</strong>: Audit coordinates, validation stages, and locate bounds. Switch role to <strong>Official</strong> to unlock checklist approvals.
           </span>
         </div>
       </div>
 
-      {/* View Tabs (Only visible in Official mode) */}
+      {/* Tabs */}
       {userMode === 'official' && (
-        <div style={{ display: 'flex', borderBottom: '2px solid #cbdcce', marginBottom: 12 }}>
+        <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: 12, flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => { setActiveTab('inbox'); setUploadStatus(''); }}
             style={{
-              padding: '10px 20px',
+              padding: '10px 16px',
               background: 'none',
               border: 'none',
-              borderBottom: activeTab === 'inbox' ? '3px solid #1976d2' : '3px solid transparent',
-              color: activeTab === 'inbox' ? '#1976d2' : '#556a59',
+              borderBottom: activeTab === 'inbox' ? '3px solid var(--primary)' : '3px solid transparent',
+              color: activeTab === 'inbox' ? 'var(--primary)' : 'var(--text-secondary)',
               fontWeight: 800,
-              fontSize: 13,
+              fontSize: 12.5,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 6
             }}
           >
-            📥 My Pipeline Inbox ({
+            📥 Pipeline Inbox ({
               records.filter(r => {
                 if (jurisdiction && r.district !== jurisdiction) return false;
                 const des = loggedInOfficer?.designation || '';
-                if (des.includes('FRO') || des.includes('Forest Rights')) return ['Claim Filed', 'DLC Approved'].includes(r.status);
-                if (des.includes('SDLC') || des.includes('Sub-Divisional')) return ['Gram Sabha Resolved', 'Under Verification'].includes(r.status);
-                if (des.includes('DLC') || des.includes('District Level')) return ['SDLC Approved'].includes(r.status);
+                if (des.includes('FRO')) return ['Claim Filed', 'DLC Approved'].includes(r.status);
+                if (des.includes('SDLC')) return ['Gram Sabha Resolved', 'Under Verification'].includes(r.status);
+                if (des.includes('DLC')) return ['SDLC Approved'].includes(r.status);
                 return false;
               }).length
-            } Pending)
+            } Actionable)
           </button>
+          
           <button
             type="button"
             onClick={() => setActiveTab('all')}
             style={{
-              padding: '10px 20px',
+              padding: '10px 16px',
               background: 'none',
               border: 'none',
-              borderBottom: activeTab === 'all' ? '3px solid #2e7d32' : '3px solid transparent',
-              color: activeTab === 'all' ? '#2e7d32' : '#556a59',
+              borderBottom: activeTab === 'all' ? '3px solid var(--primary)' : '3px solid transparent',
+              color: activeTab === 'all' ? 'var(--primary)' : 'var(--text-secondary)',
               fontWeight: 800,
-              fontSize: 13,
+              fontSize: 12.5,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 6
             }}
           >
-            📋 Master Digital Ledger ({
+            📋 Master Spatial Ledger ({
               records.filter(r => {
                 if (jurisdiction && r.district !== jurisdiction) return false;
                 return true;
@@ -406,37 +390,33 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
         </div>
       )}
 
-      {/* Bulk Claim Ingestion Section (Visible for SDLC Officers in Pipeline Inbox) */}
-      {/* Bulk & Manual Claim Ingestion Section (Visible for SDLC Officers in Pipeline Inbox) */}
+      {/* Ingestion Panel */}
       {userMode === 'official' && activeTab === 'inbox' && (loggedInOfficer?.designation?.includes('SDLC') || loggedInOfficer?.designation?.includes('Sub-Divisional')) && (
-        <div style={{
-          background: '#f0fdf4',
-          border: '1.5px solid #bbf7d0',
-          borderRadius: 8,
-          padding: 16,
-          marginBottom: 12,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #bbf7d0', paddingBottom: 8 }}>
-            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div 
+          className="glass-card"
+          style={{
+            background: 'rgba(22, 101, 52, 0.03)',
+            borderRadius: 14,
+            padding: 16,
+            marginBottom: 12,
+            boxShadow: 'var(--shadow-sm)',
+            flexShrink: 0
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span>📤</span> SDLC Administrative Ingestion Panel
             </h3>
             
-            {/* Mode Switcher */}
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 type="button"
                 onClick={() => { setIngestMode('bulk'); setUploadStatus(''); }}
                 style={{
-                  padding: '4px 10px',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  border: '1px solid #166534',
-                  background: ingestMode === 'bulk' ? '#166534' : 'white',
-                  color: ingestMode === 'bulk' ? 'white' : '#166534',
-                  transition: 'all 0.1s'
+                  padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: 'pointer',
+                  border: '1px solid var(--primary)',
+                  background: ingestMode === 'bulk' ? 'var(--primary)' : 'var(--card)',
+                  color: ingestMode === 'bulk' ? 'white' : 'var(--primary)'
                 }}
               >
                 📂 Ingest Spreadsheet
@@ -445,15 +425,10 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
                 type="button"
                 onClick={() => { setIngestMode('manual'); setUploadStatus(''); }}
                 style={{
-                  padding: '4px 10px',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  border: '1px solid #166534',
-                  background: ingestMode === 'manual' ? '#166534' : 'white',
-                  color: ingestMode === 'manual' ? 'white' : '#166534',
-                  transition: 'all 0.1s'
+                  padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: 'pointer',
+                  border: '1px solid var(--primary)',
+                  background: ingestMode === 'manual' ? 'var(--primary)' : 'var(--card)',
+                  color: ingestMode === 'manual' ? 'white' : 'var(--primary)'
                 }}
               >
                 ✍️ Register Single Claim
@@ -463,297 +438,106 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
 
           {ingestMode === 'bulk' ? (
             <div>
-              <p style={{ margin: '0 0 12px 0', fontSize: 11, color: '#475569', lineHeight: 1.4 }}>
-                As a Sub-Divisional Committee Officer, you have exclusive authority to ingest newly collected land claims from village survey teams. Attach a claim spreadsheet (CSV or Excel) below to automatically populate coordinates and claimant records into the spatial database.
+              <p style={{ margin: '0 0 10px 0', fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                As an SDLC Officer, attach a claim spreadsheet to batch geocode coordinates and register claimant records.
               </p>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    type="file"
-                    id="sdlcBulkUpload"
-                    style={{ display: 'none' }}
-                    onChange={e => {
-                      setSelectedUploadFile(e.target.files[0]);
-                      setUploadStatus('');
-                    }}
-                  />
-                  <label
-                    htmlFor="sdlcBulkUpload"
-                    style={{
-                      display: 'block',
-                      padding: '10px',
-                      border: '1.5px dashed #166534',
-                      borderRadius: 6,
-                      textAlign: 'center',
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                      color: '#166534',
-                      cursor: 'pointer',
-                      background: 'white'
-                    }}
-                  >
+                  <input type="file" id="sdlcBulkUpload" style={{ display: 'none' }} onChange={e => { setSelectedUploadFile(e.target.files[0]); setUploadStatus(''); }} />
+                  <label htmlFor="sdlcBulkUpload" style={{ display: 'block', padding: '10px', border: '1.5px dashed var(--primary)', borderRadius: 8, textAlign: 'center', fontSize: 11.5, fontWeight: 750, color: 'var(--primary)', cursor: 'pointer', background: 'var(--card)' }}>
                     {selectedUploadFile ? `📎 Selected: ${selectedUploadFile.name}` : '📂 Choose Land Claims Spreadsheet (Excel/CSV)'}
                   </label>
                 </div>
                 
                 {selectedUploadFile ? (
-                  <button
-                    type="button"
-                    onClick={() => handleBulkUpload(false)}
-                    disabled={uploading}
-                    style={{
-                      padding: '10px 20px',
-                      background: '#166534',
-                      border: 'none',
-                      color: 'white',
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      opacity: uploading ? 0.6 : 1
-                    }}
-                  >
-                    {uploading ? 'Ingesting...' : 'Ingest Claims Registry'}
+                  <button type="button" onClick={() => handleBulkUpload(false)} disabled={uploading} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: 'white', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
+                    Ingest Ledger
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleBulkUpload(true)}
-                    disabled={uploading}
-                    style={{
-                      padding: '10px 20px',
-                      background: '#1565c0',
-                      border: 'none',
-                      color: 'white',
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      opacity: uploading ? 0.6 : 1
-                    }}
-                  >
-                    ⚡ Load Demo Spreadsheet Data
+                  <button type="button" onClick={() => handleBulkUpload(true)} disabled={uploading} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: 'white', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
+                    ⚡ Load Demo Spreadsheet
                   </button>
                 )}
               </div>
             </div>
           ) : (
             <form onSubmit={handleManualSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: '#475569' }}>
-                  Register a single claim directly. Jurisdictional district is locked to <strong>{jurisdiction || 'Kodagu'}</strong>.
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                  Register single claim. District locked to <strong>{jurisdiction || 'Kodagu'}</strong>.
                 </span>
-                <button
-                  type="button"
-                  onClick={handleAutofillSampleDetails}
-                  style={{
-                    padding: '3px 8px',
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                    background: '#e0f2fe',
-                    color: '#0369a1',
-                    border: '1px solid #bae6fd'
-                  }}
-                >
+                <button type="button" onClick={handleAutofillSampleDetails} style={{ padding: '4px 8px', fontSize: 10.5, fontWeight: 700, borderRadius: 4, cursor: 'pointer', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                   🪄 Autofill Sample Details
                 </button>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                {/* Claimant Name */}
                 <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Claimant Name</label>
-                  <input
-                    type="text"
-                    required
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    placeholder="e.g. Kariappa Gowda"
-                    value={manualClaim.claimant_name}
-                    onChange={e => setManualClaim(prev => ({ ...prev, claimant_name: e.target.value }))}
-                  />
+                  <input type="text" required style={{ ...selStyle, width: '100%' }} placeholder="Claimant Name" value={manualClaim.claimant_name} onChange={e => setManualClaim(prev => ({ ...prev, claimant_name: e.target.value }))} />
                 </div>
-
-                {/* Village */}
                 <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Village</label>
-                  <input
-                    type="text"
-                    required
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    placeholder="e.g. Birunani"
-                    value={manualClaim.village}
-                    onChange={e => setManualClaim(prev => ({ ...prev, village: e.target.value }))}
-                  />
+                  <input type="text" required style={{ ...selStyle, width: '100%' }} placeholder="Village" value={manualClaim.village} onChange={e => setManualClaim(prev => ({ ...prev, village: e.target.value }))} />
                 </div>
-
-                {/* Taluk */}
                 <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Taluk</label>
-                  <input
-                    type="text"
-                    required
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    placeholder="e.g. Virajpet"
-                    value={manualClaim.taluk}
-                    onChange={e => setManualClaim(prev => ({ ...prev, taluk: e.target.value }))}
-                  />
+                  <input type="text" required style={{ ...selStyle, width: '100%' }} placeholder="Taluk" value={manualClaim.taluk} onChange={e => setManualClaim(prev => ({ ...prev, taluk: e.target.value }))} />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr 1.2fr', gap: 10 }}>
-                {/* Tribe */}
-                <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Tribal Community</label>
-                  <select
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    value={manualClaim.tribal_community}
-                    onChange={e => setManualClaim(prev => ({ ...prev, tribal_community: e.target.value }))}
-                  >
-                    {TRIBES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-
-                {/* Area */}
-                <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Area (Acres)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    placeholder="e.g. 2.50"
-                    value={manualClaim.claim_area_acres}
-                    onChange={e => setManualClaim(prev => ({ ...prev, claim_area_acres: e.target.value }))}
-                  />
-                </div>
-
-                {/* Form Type */}
-                <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Form Type</label>
-                  <select
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    value={manualClaim.form_type}
-                    onChange={e => setManualClaim(prev => ({ ...prev, form_type: e.target.value }))}
-                  >
-                    {FORMS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-
-                {/* GPS Coordinates Helper */}
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={handleAutofillCoords}
-                    style={{
-                      padding: '6px',
-                      fontSize: 10,
-                      fontWeight: 700,
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      background: '#f1f5f9',
-                      color: '#475569',
-                      border: '1px solid #cbd5e1',
-                      height: 30,
-                      marginBottom: 1
-                    }}
-                  >
-                    📍 Generate Coords
-                  </button>
-                </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr auto', gap: 10, alignItems: 'center' }}>
+                <select style={{ ...selStyle, width: '100%' }} value={manualClaim.tribal_community} onChange={e => setManualClaim(prev => ({ ...prev, tribal_community: e.target.value }))}>
+                  {TRIBES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <input type="number" step="0.01" required style={{ ...selStyle, width: '100%' }} placeholder="Acres" value={manualClaim.claim_area_acres} onChange={e => setManualClaim(prev => ({ ...prev, claim_area_acres: e.target.value }))} />
+                <select style={{ ...selStyle, width: '100%' }} value={manualClaim.form_type} onChange={e => setManualClaim(prev => ({ ...prev, form_type: e.target.value }))}>
+                  {FORMS.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+                <button type="button" onClick={handleAutofillCoords} style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: 'pointer', background: 'var(--card)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                  📍 Generate GPS
+                </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, alignItems: 'flex-end' }}>
-                {/* Latitude */}
-                <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Latitude</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    required
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    placeholder="e.g. 12.1456"
-                    value={manualClaim.lat}
-                    onChange={e => setManualClaim(prev => ({ ...prev, lat: e.target.value }))}
-                  />
-                </div>
-
-                {/* Longitude */}
-                <div>
-                  <label style={{ fontSize: 9.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Longitude</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    required
-                    style={{ ...selStyle, width: '100%', minWidth: 'auto', marginTop: 3 }}
-                    placeholder="e.g. 75.8234"
-                    value={manualClaim.lng}
-                    onChange={e => setManualClaim(prev => ({ ...prev, lng: e.target.value }))}
-                  />
-                </div>
-
-                {/* Submit button */}
-                <button
-                  type="submit"
-                  disabled={uploading}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#166534',
-                    border: 'none',
-                    color: 'white',
-                    borderRadius: 6,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    opacity: uploading ? 0.6 : 1,
-                    height: 30
-                  }}
-                >
-                  {uploading ? 'Registering...' : 'Register Claim'}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                <input type="number" step="0.0001" required style={{ ...selStyle, width: '100%' }} placeholder="Latitude" value={manualClaim.lat} onChange={e => setManualClaim(prev => ({ ...prev, lat: e.target.value }))} />
+                <input type="number" step="0.0001" required style={{ ...selStyle, width: '100%' }} placeholder="Longitude" value={manualClaim.lng} onChange={e => setManualClaim(prev => ({ ...prev, lng: e.target.value }))} />
+                <button type="submit" disabled={uploading} style={{ padding: '8px 16px', background: 'var(--primary)', border: 'none', color: 'white', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
+                  {uploading ? 'Registering...' : 'Register Claim Form'}
                 </button>
               </div>
             </form>
           )}
 
           {uploadStatus && (
-            <div style={{
-              marginTop: 10,
-              background: uploadStatus.includes('Successfully') ? '#e8f5e9' : '#ffebee',
-              border: `1.5px solid ${uploadStatus.includes('Successfully') ? '#a5d6a7' : '#ffcdd2'}`,
-              borderRadius: 6,
-              padding: '8px 10px',
-              fontSize: 11.5,
-              fontWeight: 700,
-              color: uploadStatus.includes('Successfully') ? '#2e7d32' : '#c62828'
-            }}>
+            <div style={{ marginTop: 10, background: uploadStatus.includes('Successfully') ? 'rgba(22, 101, 52, 0.05)' : 'rgba(239, 68, 68, 0.05)', border: `1px solid ${uploadStatus.includes('Successfully') ? 'var(--success)' : 'var(--danger)'}`, borderRadius: 6, padding: '8px 12px', fontSize: 12, fontWeight: 700, color: uploadStatus.includes('Successfully') ? 'var(--success)' : 'var(--danger)' }}>
               {uploadStatus}
             </div>
           )}
         </div>
       )}
 
-      {/* Database Filters Bar */}
-      <div style={{
-        background: 'white',
-        borderRadius: 8,
-        padding: '12px 16px',
-        border: '1px solid #c8dcd0',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-        marginBottom: 12,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 800, color: '#2d5a27', textTransform: 'uppercase' }}>
-          <Filter size={12}/> Filter Claims
+      {/* Filters Bar */}
+      <div 
+        className="glass-card"
+        style={{
+          borderRadius: 12,
+          padding: '10px 14px',
+          border: '1px solid var(--border)',
+          boxShadow: 'var(--shadow-sm)',
+          marginBottom: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          flexWrap: 'wrap',
+          flexShrink: 0
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Filter size={12}/> Filters
         </div>
 
         {/* Search */}
-        <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#718096' }} />
+        <div style={{ position: 'relative', flex: 1, minWidth: 160 }}>
+          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
           <input
             style={{ ...selStyle, width: '100%', paddingLeft: 30 }}
             placeholder="Search claimant, ID, village..."
@@ -784,10 +568,12 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
           {FORMS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
 
-        <select style={selStyle} value={filters?.status || ''} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {activeTab !== 'inbox' && (
+          <select style={selStyle} value={filters?.status || ''} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
+            <option value="">All Statuses</option>
+            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
 
         <select style={selStyle} value={filters?.tribe || ''} onChange={e => setFilters(f => ({ ...f, tribe: e.target.value }))}>
           <option value="">All Tribes</option>
@@ -796,29 +582,53 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
 
         {(search || filters?.district || filters?.form_type || filters?.status || filters?.tribe) && (
           <button
-            onClick={() => { setSearch(''); setFilters({ district: '', form_type: '', status: '', tribe: '' }); }}
-            style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#991b1b', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
+            onClick={() => { setSearch(''); setFilters({ district: jurisdiction || '', form_type: '', status: '', tribe: '' }); }}
+            style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--danger)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
           >
-            ✕ Reset
+            ✕ Clear
           </button>
         )}
+        
+        <button
+          onClick={() => exportCSV(filtered)}
+          style={{
+            background: 'var(--primary)',
+            border: 'none',
+            color: 'white',
+            padding: '6px 12px',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 11.5,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            marginLeft: 'auto',
+            boxShadow: 'var(--shadow-sm)'
+          }}
+        >
+          <FileSpreadsheet size={13}/>
+          Export CSV ({filtered.length})
+        </button>
       </div>
 
-      {/* Main Table Grid (Fits page layout) */}
-      <div style={{
-        background: 'white',
-        borderRadius: 8,
-        border: '1px solid #c8dcd0',
-        boxShadow: '0 4px 10px rgba(0,0,0,0.02)',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        flex: 1
-      }}>
+      {/* Ledger Table grid */}
+      <div 
+        className="glass"
+        style={{
+          borderRadius: 16,
+          border: '1px solid var(--border)',
+          boxShadow: 'var(--shadow-md)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1
+        }}
+      >
         <div style={{ overflowY: 'auto', flex: 1 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'left' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, textAlign: 'left' }}>
             <thead>
-              <tr style={{ background: '#355e3b', color: '#ffffff', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, position: 'sticky', top: 0, zIndex: 10 }}>
+              <tr style={{ background: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--border)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--text-secondary)', position: 'sticky', top: 0, zIndex: 10 }}>
                 {[
                   { field: 'patta_id', label: 'Patta ID' },
                   { field: 'claimant_name', label: 'Claimant Name' },
@@ -835,13 +645,13 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
                     style={{
                       padding: '12px 16px',
                       cursor: 'pointer',
-                      borderRight: '1px solid #4a7c59',
+                      borderRight: '1px solid var(--border)',
                       userSelect: 'none'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {h.label}
-                      {sortField === h.field && (sortOrder === 'asc' ? '▲' : '▼')}
+                      <ArrowUpDown size={11} color="var(--text-secondary)" />
                     </div>
                   </th>
                 ))}
@@ -850,9 +660,9 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading records...</td></tr>
+                <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)' }}>Loading ledger records...</td></tr>
               ) : currentRecords.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>No claims matched the active filters.</td></tr>
+                <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)' }}>No claims match active search filters.</td></tr>
               ) : currentRecords.map((r, i) => {
                 const color = STATUS_COLOR[r.status] || '#aaa';
                 const isGranted = r.status === 'Title Granted';
@@ -860,113 +670,102 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
                   <tr
                     key={r.patta_id}
                     style={{
-                      background: i % 2 === 0 ? 'white' : '#fcfdfc',
-                      borderBottom: '1px solid #edf5ed',
-                      transition: 'background 0.1s ease'
+                      background: i % 2 === 0 ? 'var(--card)' : 'rgba(0,0,0,0.01)',
+                      borderBottom: '1px solid var(--border)',
+                      transition: 'background-color 0.1s'
                     }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.02)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'var(--card)' : 'rgba(0,0,0,0.01)'}
                   >
-                    <td style={{ padding: '8px 16px', fontFamily: 'monospace', fontWeight: 700, color: '#355e3b' }}>{r.patta_id}</td>
-                    <td style={{ padding: '8px 16px', fontWeight: 700 }}>{r.claimant_name || 'Village Community'}</td>
-                    <td style={{ padding: '8px 16px' }}>
-                      <span style={badgeStyle(r.form_type)}>
+                    <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{r.patta_id}</td>
+                    <td style={{ padding: '10px 16px', fontWeight: 800, color: 'var(--text-primary)' }}>{r.claimant_name || 'Village Community'}</td>
+                    <td style={{ padding: '10px 16px' }}>
+                      <span 
+                        style={{
+                          fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+                          background: r.form_type?.includes('A') ? 'rgba(59, 130, 246, 0.1)' : r.form_type?.includes('B') ? 'rgba(139, 92, 246, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+                          color: r.form_type?.includes('A') ? '#3b82f6' : r.form_type?.includes('B') ? '#8b5cf6' : '#22c55e',
+                          border: `1px solid ${r.form_type?.includes('A') ? 'rgba(59, 130, 246, 0.2)' : r.form_type?.includes('B') ? 'rgba(139, 92, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)'}`
+                        }}
+                      >
                         {r.form_type?.includes('A') ? 'IFR' : r.form_type?.includes('B') ? 'CR' : 'CFR'}
                       </span>
                     </td>
-                    <td style={{ padding: '8px 16px' }}>{r.village || 'N/A'}</td>
-                    <td style={{ padding: '8px 16px', color: '#4a5568' }}>{r.district}</td>
-                    <td style={{ padding: '8px 16px', color: '#4a5568' }}>{r.tribal_community || 'OTFD'}</td>
-                    <td style={{ padding: '8px 16px', fontFamily: 'monospace', fontWeight: 700 }}>{parseFloat(r.claim_area_acres || 0).toFixed(2)}</td>
-                    <td style={{ padding: '8px 16px', whiteSpace: 'nowrap' }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, color, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <td style={{ padding: '10px 16px', fontWeight: 650 }}>{r.village || 'N/A'}</td>
+                    <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>{r.district}</td>
+                    <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>{r.tribal_community || 'OTFD'}</td>
+                    <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontWeight: 700 }}>{parseFloat(r.claim_area_acres || 0).toFixed(2)}</td>
+                    <td style={{ padding: '10px 16px', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color, display: 'flex', alignItems: 'center', gap: 5 }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
                         {r.status}
                       </span>
                     </td>
-                    <td style={{ padding: '6px 16px', display: 'flex', gap: 6, justifyContent: 'center' }}>
+                    <td style={{ padding: '8px 16px', display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
                       
-                      {/* Show on Map */}
                       <button
                         onClick={() => onLocateOnMap(r)}
                         title="Locate on Map"
                         style={{
-                          background: '#f1f8f1',
-                          border: '1px solid #cbdcce',
-                          borderRadius: 4,
-                          padding: '4px',
-                          cursor: 'pointer',
-                          color: '#2d5a27',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
+                          background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, width: 28, height: 28,
+                          cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: 'var(--shadow-sm)'
                         }}
                       >
-                        <MapPin size={12}/>
+                        <MapPin size={13}/>
                       </button>
 
-                      {/* Print Certificate */}
                       <button
                         onClick={() => onPrintDeed(r)}
                         disabled={!isGranted}
-                        title={isGranted ? "Print Title Deed" : "Deed unavailable (Title not granted)"}
+                        title={isGranted ? "Print Title Deed" : "Deed unavailable"}
                         style={{
-                          background: isGranted ? '#e8f5e9' : '#fcfdfc',
-                          border: `1px solid ${isGranted ? '#a5d6a7' : '#edf5ed'}`,
-                          borderRadius: 4,
-                          padding: '4px',
+                          background: isGranted ? 'rgba(34, 197, 94, 0.08)' : 'var(--card)',
+                          border: `1px solid ${isGranted ? 'rgba(34, 197, 94, 0.2)' : 'var(--border)'}`,
+                          borderRadius: 6, width: 28, height: 28,
                           cursor: isGranted ? 'pointer' : 'not-allowed',
-                          color: isGranted ? '#2e7d32' : '#94a3b8',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
+                          color: isGranted ? 'var(--success)' : 'var(--text-secondary)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: 'var(--shadow-sm)'
                         }}
                       >
-                        <FileText size={12}/>
+                        <FileText size={13}/>
                       </button>
 
-                      {/* Download JFI report */}
                       {(r.status === 'SDLC Approved' || r.status === 'DLC Approved' || r.status === 'Title Granted') && (
                         <a
                           href={`${API}/api/fra/record/${r.patta_id}/download-report`}
                           download
                           title="Download JFI Report"
                           style={{
-                            background: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: 4,
-                            padding: '4px',
-                            cursor: 'pointer',
-                            color: '#1d4ed8',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            textDecoration: 'none'
+                            background: 'rgba(59, 130, 246, 0.08)',
+                            border: '1px solid rgba(59, 130, 246, 0.2)',
+                            borderRadius: 6, width: 28, height: 28,
+                            cursor: 'pointer', color: '#3b82f6',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            textDecoration: 'none', boxShadow: 'var(--shadow-sm)'
                           }}
                         >
-                          <FileText size={12}/>
+                          <Download size={13}/>
                         </a>
                       )}
 
-                      {/* Review Status (Guarded by User Mode) */}
                       {userMode === 'official' && (
                         <button
                           onClick={() => onReviewClaim(r)}
                           title="Evaluate Claim"
                           style={{
-                            background: 'rgba(25, 118, 210, 0.08)',
-                            border: '1px solid #90caf9',
-                            borderRadius: 4,
-                            padding: '3px 6px',
-                            cursor: 'pointer',
-                            color: '#1565c0',
-                            fontSize: 10,
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 3
+                            background: 'rgba(16, 185, 129, 0.08)',
+                            border: '1px solid rgba(16, 185, 129, 0.2)',
+                            borderRadius: 6, padding: '4px 10px',
+                            cursor: 'pointer', color: 'var(--accent)',
+                            fontSize: 10.5, fontWeight: 750,
+                            display: 'flex', alignItems: 'center', gap: 4,
+                            boxShadow: 'var(--shadow-sm)'
                           }}
                         >
-                          <ShieldAlert size={11}/>
-                          Review
+                          <ShieldAlert size={12}/>
+                          Evaluate
                         </button>
                       )}
 
@@ -980,49 +779,42 @@ export default function RecordsTable({ userMode, onReviewClaim, onPrintDeed, onL
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div style={{
-            background: '#edf5ed',
-            borderTop: '1px solid #c8dcd0',
-            padding: '10px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: 12,
-            color: '#4a7c59'
-          }}>
+          <div 
+            style={{
+              background: 'rgba(0,0,0,0.02)',
+              borderTop: '1px solid var(--border)',
+              padding: '10px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: 12,
+              color: 'var(--text-secondary)',
+              flexShrink: 0
+            }}
+          >
             <div>
               Showing {indexOfFirst + 1} to {Math.min(indexOfLast, filtered.length)} of {filtered.length} claims
             </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
                 style={{
-                  background: 'white',
-                  border: '1px solid #cbdcce',
-                  borderRadius: 4,
-                  padding: '4px 8px',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === 1 ? 0.5 : 1,
-                  display: 'flex',
-                  alignItems: 'center'
+                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: 'var(--text-primary)'
                 }}
               >
                 <ChevronLeft size={13}/> Prev
               </button>
-              <span style={{ fontWeight: 800, color: '#355e3b' }}>Page {currentPage} of {totalPages}</span>
+              <span style={{ fontWeight: 800, color: 'var(--primary)' }}>Page {currentPage} of {totalPages}</span>
               <button
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
                 style={{
-                  background: 'white',
-                  border: '1px solid #cbdcce',
-                  borderRadius: 4,
-                  padding: '4px 8px',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === totalPages ? 0.5 : 1,
-                  display: 'flex',
-                  alignItems: 'center'
+                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: 'var(--text-primary)'
                 }}
               >
                 Next <ChevronRight size={13}/>
