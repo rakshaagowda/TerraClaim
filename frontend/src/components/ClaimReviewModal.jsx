@@ -10,6 +10,7 @@ const STATUSES = [
   'Gram Sabha Resolved',
   'Under Verification',
   'SDLC Approved',
+  'Escalated to State',
   'DLC Approved',
   'Title Granted',
   'Rejected'

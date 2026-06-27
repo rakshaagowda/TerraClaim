@@ -1513,6 +1513,184 @@ def submit_claim(req: ClaimSubmitRequest):
         raise HTTPException(status_code=500, detail=f"Database Insertion Error: {str(e)}")
 
 
+# ── STAGE DOCUMENT GENERATION ENDPOINT ─────────────────────
+@app.get("/api/fra/record/{patta_id}/stage-document")
+def get_stage_document(patta_id: str, stage: str = Query(...)):
+    """Return structured data for rendering a printable stage document."""
+    valid_stages = ['applicant', 'gram_sabha', 'sdlc', 'dlc']
+    if stage not in valid_stages:
+        raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of: {valid_stages}")
+    
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    
+    # Fetch the claim record
+    cur.execute("SELECT * FROM fra_records WHERE patta_id = %s;", (patta_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Record not found")
+    
+    record = clean_dict(dict(row))
+    geom_str = record.get("geom") or ""
+    parsed = parse_wkt(geom_str)
+    if parsed:
+        geom_type, coords = parsed
+        if geom_type == "point":
+            record["lng"], record["lat"] = coords
+        else:
+            record["lng"] = sum(p[0] for p in coords) / len(coords)
+            record["lat"] = sum(p[1] for p in coords) / len(coords)
+    else:
+        record["lng"], record["lat"] = 76.0, 12.0
+    
+    # Fetch the latest audit trail entry for this stage's status change
+    stage_status_map = {
+        'applicant': 'Claim Filed',
+        'gram_sabha': 'Gram Sabha Resolved',
+        'sdlc': 'SDLC Approved',
+        'dlc': 'DLC Approved'
+    }
+    
+    cur.execute("""
+        SELECT officer_id, officer_name, designation, created_at::text, description
+        FROM claim_audit_trail
+        WHERE patta_id = %s AND action = 'Status Change'
+        ORDER BY created_at DESC;
+    """, (patta_id,))
+    audit_rows = cur.fetchall()
+    
+    # Find the officer who performed the stage action
+    stage_officer = {
+        'officer_id': None,
+        'officer_name': 'Pending',
+        'designation': 'Pending',
+        'action_date': None,
+        'remarks': ''
+    }
+    
+    target_status = stage_status_map.get(stage, '')
+    for a in audit_rows:
+        desc = a.get('description') or ''
+        if target_status.lower() in desc.lower():
+            stage_officer = {
+                'officer_id': a['officer_id'],
+                'officer_name': a['officer_name'] or 'Officer',
+                'designation': a['designation'] or '',
+                'action_date': a['created_at'],
+                'remarks': desc
+            }
+            break
+    
+    # For applicant stage, always set date to claim creation
+    if stage == 'applicant':
+        stage_officer['officer_name'] = record.get('claimant_name') or 'Applicant'
+        stage_officer['designation'] = 'Public Citizen / Applicant'
+        stage_officer['action_date'] = str(record.get('created_at') or record.get('updated_at') or '')
+    
+    # Fetch stage-specific report text from the record
+    stage_report_map = {
+        'applicant': f"Application for Forest Rights under {record.get('form_type', 'Form A (IFR)')} has been filed.",
+        'gram_sabha': record.get('gs_report') or 'Gram Sabha resolution passed recommending the claim.',
+        'sdlc': record.get('sdlc_report') or 'Joint Field Inspection completed. GPS coordinates validated on site.',
+        'dlc': record.get('dlc_report') or 'District Level Committee review and verification completed.'
+    }
+    
+    stage_date_map = {
+        'applicant': str(record.get('created_at') or ''),
+        'gram_sabha': str(record.get('gram_sabha_date') or ''),
+        'sdlc': str(record.get('sdlc_date') or ''),
+        'dlc': str(record.get('dlc_date') or '')
+    }
+    
+    # Fetch latest comment/remarks for this stage  
+    stage_designation_keywords = {
+        'applicant': ['applicant', 'citizen', 'public'],
+        'gram_sabha': ['gram', 'fro', 'forest rights officer'],
+        'sdlc': ['sdlc', 'sub-divisional'],
+        'dlc': ['dlc', 'district level']
+    }
+    
+    cur.execute("""
+        SELECT officer_name, designation, comment, action_taken, created_at::text
+        FROM claim_comments
+        WHERE patta_id = %s
+        ORDER BY created_at DESC;
+    """, (patta_id,))
+    comments = cur.fetchall()
+    
+    stage_remarks = []
+    keywords = stage_designation_keywords.get(stage, [])
+    for c in comments:
+        desg = (c.get('designation') or '').lower()
+        if any(kw in desg for kw in keywords):
+            stage_remarks.append({
+                'officer_name': c['officer_name'],
+                'designation': c['designation'],
+                'comment': c['comment'],
+                'action_taken': c['action_taken'],
+                'date': c['created_at']
+            })
+    
+    # Fetch propagated documents from previous stages
+    stage_order = ['applicant', 'gram_sabha', 'sdlc', 'dlc']
+    current_idx = stage_order.index(stage)
+    previous_stages = stage_order[:current_idx]
+    
+    propagated_docs = []
+    if previous_stages:
+        placeholders = ','.join(['%s'] * len(previous_stages))
+        cur.execute(f"""
+            SELECT id, stage, document_type, file_name, uploaded_by, uploaded_at::text
+            FROM claim_documents
+            WHERE patta_id = %s AND stage IN ({placeholders})
+            ORDER BY uploaded_at ASC;
+        """, [patta_id] + previous_stages)
+        propagated_docs = [dict(r) for r in cur.fetchall()]
+    
+    # Generate a unique document reference number
+    doc_ref = f"FRA-{stage.upper().replace('_', '')}-{patta_id}-{datetime.now().strftime('%Y%m%d')}"
+    
+    # Digital signature hash for this document
+    sig_data = f"{patta_id}:{stage}:{stage_officer['officer_name']}:{stage_date_map.get(stage, '')}:karnataka-fra-stage-doc"
+    doc_signature = hashlib.sha256(sig_data.encode()).hexdigest()[:32]
+    
+    cur.close()
+    conn.close()
+    
+    return {
+        "document_ref": doc_ref,
+        "stage": stage,
+        "stage_date": stage_date_map.get(stage, ''),
+        "stage_report": stage_report_map.get(stage, ''),
+        "stage_officer": stage_officer,
+        "stage_remarks": stage_remarks,
+        "propagated_docs": propagated_docs,
+        "doc_signature": doc_signature,
+        "record": {
+            "patta_id": record['patta_id'],
+            "form_type": record.get('form_type'),
+            "claimant_name": record.get('claimant_name'),
+            "tribal_community": record.get('tribal_community'),
+            "village": record.get('village'),
+            "taluk": record.get('taluk'),
+            "district": record.get('district'),
+            "claim_area_acres": record.get('claim_area_acres'),
+            "claim_area_ha": record.get('claim_area_ha'),
+            "status": record.get('status'),
+            "lat": record.get('lat'),
+            "lng": record.get('lng'),
+            "gram_sabha_date": str(record.get('gram_sabha_date') or ''),
+            "sdlc_date": str(record.get('sdlc_date') or ''),
+            "dlc_date": str(record.get('dlc_date') or ''),
+            "title_date": str(record.get('title_date') or ''),
+            "digital_signature": record.get('digital_signature'),
+            "signed_by": record.get('signed_by')
+        }
+    }
+
+
 # ── MULTI-STAGE FRA AUDIT REPORT DOWNLOAD ──────────────────
 from fastapi.responses import PlainTextResponse
 

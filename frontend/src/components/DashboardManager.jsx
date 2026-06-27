@@ -55,7 +55,7 @@ export default function DashboardManager({ officer, darkMode, onReviewClaim, onL
     if (c.status === 'Rejected') return 'rejected';
     
     // Check for escalation status
-    if (c.status?.toLowerCase().includes('escalat') || (isStateOrAdmin && c.status === 'DLC Approved')) {
+    if (c.status?.toLowerCase().includes('escalat') ){
       return 'escalated';
     }
 

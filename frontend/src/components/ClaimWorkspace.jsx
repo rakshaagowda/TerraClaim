@@ -124,7 +124,7 @@ export default function ClaimWorkspace({ record, officer, darkMode, onClose, onS
     } else if (actionType === 'escalate') {
       commentActionType = 'Forwarded';
       localCommentType = 'Official Remark';
-      nextStatus = 'Under Verification'; // Escalate moves status or keeps active status
+      nextStatus = 'Escalated to State'; // Escalate moves status or keeps active status
     } else if (actionType === 'clarification') {
       commentActionType = 'Requested Clarification';
       localCommentType = 'Clarification Request';
@@ -788,7 +788,7 @@ export default function ClaimWorkspace({ record, officer, darkMode, onClose, onS
               </>
             )}
 
-            {actionType === 'escalate' && (
+            {actionType === 'te' && (
               <>
                 <div style={{ background: darkMode ? '#172554' : '#eff6ff', border: darkMode ? '1px solid #1e40af' : '1px solid #bfdbfe', borderRadius: 8, padding: 10, fontSize: 11, color: darkMode ? '#dbeafe' : '#1e40af' }}>
                   <strong>Escalate to State:</strong> Moves this claim to the State Review Authority inbox. Use this for complex legal disputes, overlap warnings inside core tiger reserves, or conflicting surveys.

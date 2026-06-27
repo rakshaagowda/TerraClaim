@@ -19,7 +19,7 @@ const SCHEME_ICONS = {
 }
 
 const DISTRICTS = ['','Mysuru','Chamarajanagara','Shivamogga','Chikkamagaluru','Kodagu','Hassan']
-const STATUSES  = ['','Title Granted','DLC Approved','SDLC Approved','Under Verification','Claim Filed','Gram Sabha Resolved','Rejected']
+const STATUSES  = ['','Title Granted','DLC Approved','SDLC Approved','Escalated to state','Under Verification','Claim Filed','Gram Sabha Resolved','Rejected']
 
 function Chip({ val }) {
   const styles = {

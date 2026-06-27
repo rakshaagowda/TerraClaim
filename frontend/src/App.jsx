@@ -107,7 +107,7 @@ function convertPointsToPolygons(pointsGeoJSON) {
 const DISTRICTS = ['Mysuru', 'Chamarajanagara', 'Shivamogga', 'Chikkamagaluru', 'Kodagu', 'Hassan']
 const TRIBES = ['Soliga', 'Jenu Kuruba', 'Nayaka', 'Betta Kuruba', 'Paniyan', 'Koraga', 'Malekudiya', 'Hasala', 'Hakki-Pikki', 'Iruliga', 'Yerava', 'Adi Kurumba']
 const FORMS = ['Form A (IFR)', 'Form B (CR)', 'Form C (CFR)']
-const STATUSES = ['Claim Filed', 'Gram Sabha Resolved', 'Under Verification', 'SDLC Approved', 'DLC Approved', 'Title Granted', 'Rejected']
+const STATUSES = ['Claim Filed', 'Gram Sabha Resolved', 'Under Verification', 'Escalated to State','SDLC Approved', 'DLC Approved', 'Title Granted', 'Rejected']
 
 const navSelectStyle = {
   background: '#ffffff',
